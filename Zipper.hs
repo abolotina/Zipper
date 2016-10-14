@@ -31,6 +31,10 @@ leave loc             = leave $ fromJust $ goUp loc
 update :: (a -> a) -> Loc a -> Loc a
 update f (Loc hole ctxt) = Loc (f hole) ctxt
 
+-- Flipped function composition
+(>>>) :: (a -> b) -> (b -> c) -> a -> c
+(>>>) f g = g . f
+
 -- Generic Zipper class
 class Zipper (f :: * -> *) a where
     -- Move focus to the leftmost recursive child, if possible

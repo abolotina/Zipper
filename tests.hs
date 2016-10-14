@@ -1,6 +1,9 @@
 {-# LANGUAGE TypeOperators, TypeFamilies #-}
 module Tests where
 
+import Control.Monad
+import Data.Maybe
+
 import Zipper
 import Regular
 
@@ -44,3 +47,24 @@ tree =  TNode (Leaf 13)
               (BNode False (Leaf 13) (BNode True
                                            (Leaf 33)
                                            (Leaf  9)))
+
+-- ------------------------ Testing
+test1 :: Maybe (Tree Int Bool)
+test1 =  enter >>> goDown >=> update (\_ -> Leaf 42)
+     >>> leave >>> return $ tree
+
+test2 :: Maybe (Tree Int Bool)
+test2 =  enter >>> goDown >=> goRight >=> goDown >=> goRight >=> goLeft
+               >=> update (\_ -> Leaf 666) >>> leave >>> return $ tree
+
+test3 :: Maybe (Tree Int Bool)
+test3 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goRight
+               >=> goUp >=> update (\_ -> Leaf 13)
+     >>> leave >>> return $ tree
+
+-- Print the results of tests
+runTests :: IO ()
+runTests = do
+    print $ fromJust test1
+    print $ fromJust test2
+    print $ fromJust test3

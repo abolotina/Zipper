@@ -5,4 +5,5 @@ import Regular (from)
 main :: IO ()
 main =  do
     print tree
-    print $ from tree
+    putStrLn $ show (from tree) ++ "\n"
+    runTests

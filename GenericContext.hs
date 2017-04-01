@@ -15,8 +15,8 @@ type instance x .* '[]         = '[]
 
 type family (.**) (xs :: [*]) (ys :: [[*]]) :: [[*]]
 
-type instance (x ': xs) .** yss = (x .* yss) .++ (xs .** yss)
-type instance '[]       .** yss = '[]
+type instance (x ': xs) .** yss = x .* (xs .** yss)
+type instance '[]       .** yss = yss
 -- -------------------------------------------
 
 type family ToContext (a :: *) (code :: [[*]]) :: [[*]]
@@ -26,6 +26,6 @@ type instance ToContext a '[]         = '[]
 
 type family DiffProd (a :: *) (xs :: [*]) :: [[*]] where
     DiffProd a '[]       = '[]
-    DiffProd a '[x]      = '[]
     DiffProd a '[a]      = '[ '[]]
-    DiffProd a (x ': xs) = (x .* DiffProd a xs) .++ (xs .** DiffProd a '[x])
+    DiffProd a '[x]      = '[]
+    DiffProd a (x ': xs) = (xs .** DiffProd a '[x]) .++ (x .* DiffProd a xs)

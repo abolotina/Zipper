@@ -3,7 +3,8 @@ module Tests where
 import Control.Monad
 import Data.Maybe
 
-import TreeZipper
+--import TreeZipper
+import TreeZipper2
 import Generics.SOP
 
 -- A Show instance

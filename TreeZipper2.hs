@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeOperators, TypeFamilies, DataKinds, MultiParamTypeClasses,
-    UndecidableInstances #-}
-module TreeZipper where
+    UndecidableInstances, FlexibleInstances #-}
+module TreeZipper2 where
 
 import Data.Maybe
 
@@ -26,14 +26,14 @@ instance Generic (Tree a b) where
     from t     = SOP (fromTree t)
     to (SOP t) = toTree t
 
-instance Generic (TreeCtx a b) where
-    type Code (TreeCtx a b) = '[ '[Tree a b, a, b, Tree a b],
-                                 '[Tree a b, a, b, Tree a b],
-                                 '[Tree a b, Tree a b, a, b],
-                                 '[b, Tree a b],
-                                 '[b, Tree a b]
-                               ]
-    --type Code (TreeCtx a b) = ToContext (Tree a b) (Code (Tree a b))
+instance Generic (TreeCtx Int Bool) where
+{-    type Code (TreeCtx Int Bool) = '[ '[Tree Int Bool, Int, Bool, Tree Int Bool],
+                                      '[Tree Int Bool, Int, Bool, Tree Int Bool],
+                                      '[Tree Int Bool, Tree Int Bool, Int, Bool],
+                                      '[Bool, Tree Int Bool],
+                                      '[Bool, Tree Int Bool]
+                                    ]-}
+    type Code (TreeCtx Int Bool) = ToContext (Tree Int Bool) (Code (Tree Int Bool))
     from tc     = SOP (fromTreeCtx tc)
     to (SOP tc) = toTreeCtx tc
 
@@ -47,29 +47,15 @@ toTree (Z (I x :* Nil))                                 = Leaf x
 toTree (S (Z (I l :* I m :* I x :* I y :* I r :* Nil))) = TNode l m x y r
 toTree (S (S (Z (I x :* I l :* I r :* Nil))))           = BNode x l r
 
--- A Regular instance
-{-instance Regular (Tree a b) where
-    type PF (Tree a b) = K a
-                     :+: I :*: I :*: K a :*: K b :*: I
-                     :+: K b :*: I :*: I
-
-    from (Leaf x)          = L (K x)
-    from (TNode l m x y r) = R (L (I l :*: I m :*: K x :*: K y :*: I r))
-    from (BNode x l r)     = R (R (K x :*: I l :*: I r))
-
-    to (L (K x))                                     = Leaf x
-    to (R (L (I l :*: I m :*: K x :*: K y :*: I r))) = TNode l m x y r
-    to (R (R (K x :*: I l :*: I r)))                 = BNode x l r-}
-
 -- ------------------------------------------- Tree Context
-fromTreeCtx :: TreeCtx a b -> NS (NP I) (Code (TreeCtx a b))
+fromTreeCtx :: TreeCtx Int Bool -> NS (NP I) (Code (TreeCtx Int Bool))
 fromTreeCtx (TNode1 m x y r) = Z (I m :* I x :* I y :* I r :* Nil)
 fromTreeCtx (TNode2 l x y r) = S (Z (I l :* I x :* I y :* I r :* Nil))
 fromTreeCtx (TNode3 l m x y) = S (S (Z (I l :* I m :* I x :* I y :* Nil)))
 fromTreeCtx (BNode1 x r)     = S (S (S (Z (I x :* I r :* Nil))))
 fromTreeCtx (BNode2 x l)     = S (S (S (S (Z (I x :* I l :* Nil)))))
 
-toTreeCtx :: NS (NP I) (Code (TreeCtx a b)) -> TreeCtx a b
+toTreeCtx :: NS (NP I) (Code (TreeCtx Int Bool)) -> TreeCtx Int Bool
 toTreeCtx (Z (I m :* I x :* I y :* I r :* Nil))         = TNode1 m x y r
 toTreeCtx (S (Z (I l :* I x :* I y :* I r :* Nil)))     = TNode2 l x y r
 toTreeCtx (S (S (Z (I l :* I m :* I x :* I y :* Nil)))) = TNode3 l m x y
@@ -77,19 +63,19 @@ toTreeCtx (S (S (S (Z (I x :* I r :* Nil)))))           = BNode1 x r
 toTreeCtx (S (S (S (S (Z (I x :* I l :* Nil))))))       = BNode2 x l
 
 -- ------------------------------------------- Tree zipper implementation
-type GTreeCtx a b = SOP I (Code (TreeCtx a b))
+type GTreeCtx = SOP I (Code (TreeCtx Int Bool))
 
-toCtxFirst :: Tree a b -> GTreeCtx a b
+toCtxFirst :: Tree Int Bool -> GTreeCtx
 toCtxFirst (Leaf _)          = impossible
 toCtxFirst (TNode _ m x y r) = SOP (fromTreeCtx (TNode1 m x y r))
 toCtxFirst (BNode x _ r)     = SOP (fromTreeCtx (BNode1 x r))
 
-toFirst :: Tree a b -> Tree a b
+toFirst :: Tree Int Bool -> Tree Int Bool
 toFirst (Leaf _)          = impossible
 toFirst (TNode t _ _ _ _) = t
 toFirst (BNode _ t _)     = t
 
-fillCtx :: GTreeCtx a b -> Tree a b -> Tree a b
+fillCtx :: GTreeCtx -> Tree Int Bool -> Tree Int Bool
 fillCtx tc t = case toTreeCtx $ unSOP tc of
     TNode1 m x y r -> TNode t m x y r
     TNode2 l x y r -> TNode l t x y r
@@ -97,7 +83,7 @@ fillCtx tc t = case toTreeCtx $ unSOP tc of
     BNode1 x r     -> BNode x t r
     BNode2 x l     -> BNode x l t
 
-nextCtx :: GTreeCtx a b -> Tree a b -> GTreeCtx a b
+nextCtx :: GTreeCtx -> Tree Int Bool -> GTreeCtx
 nextCtx tc t = case toTreeCtx $ unSOP tc of
     TNode1 _ x y r -> SOP (fromTreeCtx (TNode2 t x y r))
     TNode2 l x y _ -> SOP (fromTreeCtx (TNode3 l t x y))
@@ -105,7 +91,7 @@ nextCtx tc t = case toTreeCtx $ unSOP tc of
     BNode1 x _     -> SOP (fromTreeCtx (BNode2 x t))
     BNode2{}       -> impossible
 
-nextFromCtx :: GTreeCtx a b -> Tree a b
+nextFromCtx :: GTreeCtx -> Tree Int Bool
 nextFromCtx tc = case toTreeCtx $ unSOP tc of
     TNode1 t _ _ _ -> t
     TNode2 _ _ _ t -> t
@@ -114,31 +100,31 @@ nextFromCtx tc = case toTreeCtx $ unSOP tc of
     BNode2{}       -> impossible
 
 -- ------------------------------------------- Navigation functions
-data TreeLoc a b = TreeLoc (Tree a b) [GTreeCtx a b]
+data TreeLoc = TreeLoc (Tree Int Bool) [GTreeCtx]
 
-goDown :: TreeLoc a b -> Maybe (TreeLoc a b)
+goDown :: TreeLoc -> Maybe (TreeLoc)
 goDown (TreeLoc (Leaf _) _) = Nothing
 goDown (TreeLoc t cs)       = Just (TreeLoc (toFirst t) (toCtxFirst t : cs))
 
-goRight :: TreeLoc a b -> Maybe (TreeLoc a b)
+goRight :: TreeLoc -> Maybe (TreeLoc)
 goRight (TreeLoc _ [])       = Nothing
 goRight (TreeLoc t (c : cs)) = Just (TreeLoc (nextFromCtx c) (nextCtx c t : cs))
 
-goUp :: TreeLoc a b -> Maybe (TreeLoc a b)
+goUp :: TreeLoc -> Maybe (TreeLoc)
 goUp (TreeLoc _ [])       = Nothing
 goUp (TreeLoc t (c : cs)) = Just (TreeLoc (fillCtx c t) cs)
 
 -- Start navigating
-enter :: Tree a b -> TreeLoc a b
+enter :: Tree Int Bool -> TreeLoc
 enter hole = TreeLoc hole []
 
 -- End navigating
-leave :: TreeLoc a b -> Tree a b
+leave :: TreeLoc -> Tree Int Bool
 leave (TreeLoc hole []) = hole
 leave loc           = leave $ fromJust $ goUp loc
 
 -- Update the current focus
-update :: (Tree a b -> Tree a b) -> TreeLoc a b -> TreeLoc a b
+update :: (Tree Int Bool -> Tree Int Bool) -> TreeLoc -> TreeLoc
 update f (TreeLoc hole cs) = TreeLoc (f hole) cs
 
 -- Flipped function composition

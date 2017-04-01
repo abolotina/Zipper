@@ -89,6 +89,17 @@ toFirst (Leaf _)          = impossible
 toFirst (TNode t _ _ _ _) = t
 toFirst (BNode _ t _)     = t
 
+{-toFirst' :: Generic a => a -> a
+toFirst' t = toFirstNS (Proxy :: Proxy a) (unSOP $ from t)
+
+toFirstNS :: proxy a -> NS (NP I) xss -> a
+toFirstNS p (S ns) = toFirstNS p ns
+toFirstNS p (Z np) = toFirstNP p np
+
+toFirstNP :: proxy a -> NP I xs -> a
+toFirstNP p (I x :* xs) = ?
+toFirstNP _ Nil         = impossible-}
+
 fillCtx :: GTreeCtx a b -> Tree a b -> Tree a b
 fillCtx tc t = case toTreeCtx $ unSOP tc of
     TNode1 m x y r -> TNode t m x y r

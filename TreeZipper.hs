@@ -1,11 +1,32 @@
 {-# LANGUAGE TypeOperators, TypeFamilies, DataKinds, MultiParamTypeClasses,
-    UndecidableInstances #-}
+    UndecidableInstances, FlexibleInstances, FlexibleContexts, PolyKinds,
+    ConstraintKinds #-}
 module TreeZipper where
 
+import GHC.Exts (Constraint)
 import Data.Maybe
 
 import Generics.SOP
-import GenericContext
+
+type family Check a b :: Bool where
+    Check a a = 'True
+    Check a x = 'False
+
+class Proof (p :: Bool) (a :: *) (b :: *) where
+    witness :: Proxy p -> Proxy a -> Proxy b -> b -> Maybe a
+
+instance Proof 'False a b where
+    witness _ _ _ _ = Nothing
+instance Proof 'True a a where
+    witness _ _ _ = Just
+
+type family AllProof (a :: k) (xs :: [k]) :: Constraint where
+    AllProof a '[]       = ()
+    AllProof a (x ': xs) = (Proof (Check a x) a x, AllProof a xs)
+
+type family All2Proof (a :: k) (xss :: [[k]]) :: Constraint where
+    All2Proof a '[]       = ()
+    All2Proof a (xs ': xss) = (AllProof a xs, All2Proof a xss)
 
 -- An example of a datatype: Tree
 data Tree a b = Leaf a
@@ -89,16 +110,20 @@ toFirst (Leaf _)          = impossible
 toFirst (TNode t _ _ _ _) = t
 toFirst (BNode _ t _)     = t
 
-{-toFirst' :: Generic a => a -> a
+proxyCheck :: Proxy a -> b -> Proxy (Check a b)
+proxyCheck _ _ = Proxy
+
+toFirst' :: (Generic a, All2Proof a (Code a)) => a -> a
 toFirst' t = toFirstNS (Proxy :: Proxy a) (unSOP $ from t)
 
-toFirstNS :: proxy a -> NS (NP I) xss -> a
+toFirstNS :: All2Proof a xss => Proxy a -> NS (NP I) xss -> a
 toFirstNS p (S ns) = toFirstNS p ns
 toFirstNS p (Z np) = toFirstNP p np
 
-toFirstNP :: proxy a -> NP I xs -> a
-toFirstNP p (I x :* xs) = ?
-toFirstNP _ Nil         = impossible-}
+toFirstNP :: AllProof a xs => Proxy a -> NP I xs -> a
+toFirstNP p (I x :* xs) = fromMaybe (toFirstNP p xs)
+                                    (witness (proxyCheck p x) p Proxy x)
+toFirstNP _ Nil         = impossible
 
 fillCtx :: GTreeCtx a b -> Tree a b -> Tree a b
 fillCtx tc t = case toTreeCtx $ unSOP tc of
@@ -125,13 +150,13 @@ nextFromCtx tc = case toTreeCtx $ unSOP tc of
     BNode2{}       -> impossible
 
 -- ------------------------------------------- Navigation functions
-data TreeLoc a b = TreeLoc (Tree a b) [GTreeCtx a b]
+type TreeLoc a b = (Tree a b, [GTreeCtx a b])
 
 goDown :: TreeLoc a b -> Maybe (TreeLoc a b)
-goDown (TreeLoc (Leaf _) _) = Nothing
-goDown (TreeLoc t cs)       = Just (TreeLoc (toFirst t) (toCtxFirst t : cs))
+goDown (Leaf _, _) = Nothing
+goDown (t, cs)     = Just (toFirst t, toCtxFirst t : cs)
 
-goRight :: TreeLoc a b -> Maybe (TreeLoc a b)
+{-goRight :: TreeLoc a b -> Maybe (TreeLoc a b)
 goRight (TreeLoc _ [])       = Nothing
 goRight (TreeLoc t (c : cs)) = Just (TreeLoc (nextFromCtx c) (nextCtx c t : cs))
 
@@ -150,7 +175,7 @@ leave loc           = leave $ fromJust $ goUp loc
 
 -- Update the current focus
 update :: (Tree a b -> Tree a b) -> TreeLoc a b -> TreeLoc a b
-update f (TreeLoc hole cs) = TreeLoc (f hole) cs
+update f (TreeLoc hole cs) = TreeLoc (f hole) cs-}
 
 -- Flipped function composition
 (>>>) :: (a -> b) -> (b -> c) -> a -> c

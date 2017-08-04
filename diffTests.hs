@@ -5,6 +5,36 @@ import TreeZipper
 import GenericContext
 import Generics.SOP
 
+type ExampleSum  = '[ '[Int, Bool]] .++ '[ '[Char, Bool, Int], '[Int]]
+type ExampleSum' = '[ '[Int, Bool], '[Char, Bool, Int], '[Int]]
+
+testSum0, testSum2 :: NS (NP I) ExampleSum'
+testSum0 = Z (I 5 :* I True :* Nil)
+testSum2 = S (S (Z (I 5 :* Nil)))
+
+type ExampleProd  = Int .* '[ '[Int, Bool], '[Char]]
+type ExampleProd' = '[ '[Int, Int, Bool], '[Int, Char]]
+
+type ProdUnit  = Char .* ('[ '[]])
+type ProdUnit' = '[ '[Char]]
+
+type ProdZero  = Int .* '[]
+type ProdZero' = '[]
+
+type ExamplePProd  = '[Int, Bool] .** '[ '[Bool], '[Bool, Char]]
+type ExamplePProd' = '[ '[Int, Bool, Bool], '[Int, Bool, Bool, Char]]
+
+testProdUnit0 :: NS (NP I) ProdUnit'
+testProdUnit0 = Z (I 'x' :* Nil)
+
+testPProd0, testPProd1 :: NS (NP I) ExamplePProd
+testPProd0 = Z (I 5 :* I False :* I True :* Nil)
+testPProd1 = S (Z (I 5 :* I False :* I True :* I 'x' :* Nil))
+
+testProd0, testProd1 :: NS (NP I) ExampleProd'
+testProd0 = Z (I 5 :* I 13 :* I True :* Nil)
+testProd1 = S (Z (I 5 :* I 'x' :* Nil))
+
 data Tree' = BNode' Int Tree' Tree' | MNode' Char Tree' | Leaf'
 
 type Test = ToContext Tree' '[ '[Int, Tree', Tree'], '[]]

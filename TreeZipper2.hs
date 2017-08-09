@@ -30,17 +30,15 @@ type TreeIB    = Tree Int Bool
 type TreeCtxIB = TreeCtx Int Bool
 
 instance Generic TreeCtxIB where
-{-    type Code (TreeCtxIB) = '[ '[TreeIB, Int, Bool, TreeIB],
-                                 '[TreeIB, Int, Bool, TreeIB],
-                                 '[TreeIB, TreeIB, Int, Bool],
-                                 '[Bool, TreeIB],
-                                 '[Bool, TreeIB]
-                               ]-}
-    type Code TreeCtxIB = ToContext TreeIB (Code TreeIB)
+{-    type Code TreeCtxIB = '[ '[TreeIB, Int, Bool, TreeIB],
+                               '[TreeIB, Int, Bool, TreeIB],
+                               '[TreeIB, TreeIB, Int, Bool],
+                               '[Bool, TreeIB],
+                               '[Bool, TreeIB]
+                             ]-}
+    type Code TreeCtxIB = ToContext 'F TreeIB (Code TreeIB)
     from tc     = SOP (fromTreeCtx tc)
     to (SOP tc) = toTreeCtx tc
-
-type RepTreeContext = SOP I (ToContext TreeIB (Code TreeIB))
 
 fromTree :: Tree a b -> NS (NP I) (Code (Tree a b))
 fromTree (Leaf x)          = Z (I x :* Nil)
@@ -54,18 +52,18 @@ toTree (S (S (Z (I x :* I l :* I r :* Nil))))           = BNode x l r
 
 -- ------------------------------------------- Tree Context
 fromTreeCtx :: TreeCtxIB -> NS (NP I) (Code TreeCtxIB)
-fromTreeCtx (TNode1 m x y r) = Z (I m :* I x :* I y :* I r :* Nil)
-fromTreeCtx (TNode2 l x y r) = S (Z (I l :* I x :* I y :* I r :* Nil))
-fromTreeCtx (TNode3 l m x y) = S (S (Z (I l :* I m :* I x :* I y :* Nil)))
-fromTreeCtx (BNode1 x r)     = S (S (S (Z (I x :* I r :* Nil))))
-fromTreeCtx (BNode2 x l)     = S (S (S (S (Z (I x :* I l :* Nil)))))
+fromTreeCtx (TNode1 m x y r) = Z (I Proxy :* I Hole :* I m :* I x :* I y :* I r :* Nil)
+fromTreeCtx (TNode2 l x y r) = S (Z (I Proxy :* I l :* I Hole :* I x :* I y :* I r :* Nil))
+fromTreeCtx (TNode3 l m x y) = S (S (Z (I Proxy :* I l :* I m :* I x :* I y :* I Hole :* Nil)))
+fromTreeCtx (BNode1 x r)     = S (S (S (Z (I Proxy :* I x :* I Hole :* I r :* Nil))))
+fromTreeCtx (BNode2 x l)     = S (S (S (S (Z (I Proxy :* I x :* I l :* I Hole :* Nil)))))
 
 toTreeCtx :: NS (NP I) (Code TreeCtxIB) -> TreeCtxIB
-toTreeCtx (Z (I m :* I x :* I y :* I r :* Nil))         = TNode1 m x y r
-toTreeCtx (S (Z (I l :* I x :* I y :* I r :* Nil)))     = TNode2 l x y r
-toTreeCtx (S (S (Z (I l :* I m :* I x :* I y :* Nil)))) = TNode3 l m x y
-toTreeCtx (S (S (S (Z (I x :* I r :* Nil)))))           = BNode1 x r
-toTreeCtx (S (S (S (S (Z (I x :* I l :* Nil))))))       = BNode2 x l
+toTreeCtx (Z (I Proxy :* I Hole :* I m :* I x :* I y :* I r :* Nil))         = TNode1 m x y r
+toTreeCtx (S (Z (I Proxy :* I l :* I Hole :* I x :* I y :* I r :* Nil)))     = TNode2 l x y r
+toTreeCtx (S (S (Z (I Proxy :* I l :* I m :* I x :* I y :* I Hole :* Nil)))) = TNode3 l m x y
+toTreeCtx (S (S (S (Z (I Proxy :* I x :* I Hole :* I r :* Nil)))))           = BNode1 x r
+toTreeCtx (S (S (S (S (Z (I Proxy :* I x :* I l :* I Hole :* Nil))))))       = BNode2 x l
 
 -- ------------------------------------------- Tree zipper implementation
 type GTreeCtx = SOP I (Code TreeCtxIB)
@@ -105,32 +103,32 @@ nextFromCtx tc = case toTreeCtx $ unSOP tc of
     BNode2{}       -> impossible
 
 -- ------------------------------------------- Navigation functions
-data TreeLoc = TreeLoc TreeIB [GTreeCtx]
+type TreeLoc = (TreeIB, [GTreeCtx])
 
 goDown :: TreeLoc -> Maybe TreeLoc
-goDown (TreeLoc (Leaf _) _) = Nothing
-goDown (TreeLoc t cs)       = Just (TreeLoc (toFirst t) (toCtxFirst t : cs))
+goDown (Leaf _, _) = Nothing
+goDown (t, cs)     = Just (toFirst t, toCtxFirst t : cs)
 
 goRight :: TreeLoc -> Maybe TreeLoc
-goRight (TreeLoc _ [])       = Nothing
-goRight (TreeLoc t (c : cs)) = Just (TreeLoc (nextFromCtx c) (nextCtx c t : cs))
+goRight (_, [])     = Nothing
+goRight (t, c : cs) = Just (nextFromCtx c, nextCtx c t : cs)
 
 goUp :: TreeLoc -> Maybe TreeLoc
-goUp (TreeLoc _ [])       = Nothing
-goUp (TreeLoc t (c : cs)) = Just (TreeLoc (fillCtx c t) cs)
+goUp (_, [])     = Nothing
+goUp (t, c : cs) = Just (fillCtx c t, cs)
 
 -- Start navigating
 enter :: TreeIB -> TreeLoc
-enter hole = TreeLoc hole []
+enter hole = (hole, [])
 
 -- End navigating
 leave :: TreeLoc -> TreeIB
-leave (TreeLoc hole []) = hole
-leave loc           = leave $ fromJust $ goUp loc
+leave (hole, []) = hole
+leave loc        = leave $ fromJust $ goUp loc
 
 -- Update the current focus
 update :: (TreeIB -> TreeIB) -> TreeLoc -> TreeLoc
-update f (TreeLoc hole cs) = TreeLoc (f hole) cs
+update f (hole, cs) = (f hole, cs)
 
 -- Flipped function composition
 (>>>) :: (a -> b) -> (b -> c) -> a -> c

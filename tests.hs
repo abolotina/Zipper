@@ -1,14 +1,13 @@
 {-# LANGUAGE TypeOperators, TypeFamilies, DataKinds,
     UndecidableInstances, FlexibleInstances, PolyKinds,
-    ConstraintKinds #-}
+    ConstraintKinds, ScopedTypeVariables #-}
 module Tests where
 
 import Control.Monad
 import Data.Maybe
 
---import TreeZipper
 import GHC.Exts (Constraint)
-import TreeZipper2
+import TreeZipper
 import Generics.SOP
 
 -- A Show instance
@@ -22,6 +21,8 @@ instance (Show a, Show b) => Show (Tree a b) where
     show (BNode x l r)     = "(" ++ show x ++
                              " " ++ show l ++
                              " " ++ show r ++ ")"
+
+type TreeIB = Tree Int Bool
 
 -- An example value of Tree
 tree :: TreeIB
@@ -45,9 +46,9 @@ instance Indexed 'False where
 instance Indexed 'True where
    index _ = 1
 
-type family Check a b :: Bool where
+{-type family Check a b :: Bool where
    Check a a = 'True
-   Check a x = 'False
+   Check a x = 'False-}
 
 type family AllIndexedTree (xs :: [k]) :: Constraint where
    AllIndexedTree '[]       = ()
@@ -57,9 +58,6 @@ type family All2IndexedTree (xss :: [[k]]) :: Constraint where
     All2IndexedTree '[]         = ()
     All2IndexedTree (xs ': xss) = (AllIndexedTree xs, All2IndexedTree xss)
 
-proxyCheck :: Proxy a -> b -> Proxy (Check a b)
-proxyCheck _ _ = Proxy
-
 testPM :: (Generic a, All2IndexedTree (Code a)) => a -> Integer
 testPM t = testPM_NS (unSOP $ from t)
 
@@ -68,8 +66,8 @@ testPM_NS (S ns) = testPM_NS ns
 testPM_NS (Z np) = testPM_NP np
 
 testPM_NP :: AllIndexedTree xs => NP I xs -> Integer
-testPM_NP (I x :* _) = index $ proxyCheck (Proxy :: Proxy TreeIB) x
-testPM_NP Nil        = impossible
+testPM_NP (I (_ :: a) :* _) = index (Proxy :: Proxy (Check TreeIB a))
+testPM_NP Nil               = impossible
 
 -- ------------------------ Testing
 test1 :: Maybe TreeIB

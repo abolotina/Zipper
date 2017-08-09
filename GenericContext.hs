@@ -2,6 +2,8 @@
      UndecidableInstances #-}
 module GenericContext where
 
+import Generics.SOP (Proxy)
+
 -- ------------------------------------------- Type arithmetic
 type family (.++) (xs :: [[*]]) (ys :: [[*]]) :: [[*]]
 
@@ -23,13 +25,23 @@ infixr 7 .*
 infixr 7 .**
 -- -------------------------------------------
 
-type family ToContext (a :: *) (code :: [[*]]) :: [[*]]
+data ConsNum = F         -- First
+             | N ConsNum -- Next
 
-type instance ToContext a (xs ': xss) = DiffProd a xs .++ ToContext a xss
-type instance ToContext a '[]         = '[]
+type family ToContext (n :: ConsNum) (a :: *) (code :: [[*]]) :: [[*]]
+
+type instance ToContext n a (xs ': xss)
+    = Proxy n .* DiffProd a xs .++ ToContext ('N n) a xss
+type instance ToContext n a '[] = '[]
+
+data Hole = Hole
+data End
 
 type family DiffProd (a :: *) (xs :: [*]) :: [[*]] where
     DiffProd a '[]       = '[]
-    DiffProd a '[a]      = '[ '[]]
+    DiffProd a '[a]      = '[ '[Hole]]
     DiffProd a '[x]      = '[]
-    DiffProd a (x ': xs) = xs .** DiffProd a '[x] .++ x .* DiffProd a xs
+    DiffProd a '[End, a] = '[ '[]]
+    DiffProd a '[End, x] = '[]
+    DiffProd a (x ': xs)
+        = Hole .* xs .** DiffProd a '[End, x] .++ x .* DiffProd a xs

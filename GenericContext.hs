@@ -27,6 +27,7 @@ infixr 7 .**
 
 data ConsNum = F         -- First
              | N ConsNum -- Next
+             | None
     deriving Eq
 
 type family ToContext (n :: ConsNum) (a :: *) (code :: [[*]]) :: [[*]]

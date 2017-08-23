@@ -4,12 +4,14 @@
     FlexibleContexts #-}
 module Tests where
 
+import GHC.Exts (Constraint)
 import Control.Monad
 import Data.Maybe
 
-import GHC.Exts (Constraint)
-import TreeZipper
 import Generics.SOP
+
+import TreeExample
+import TreeZipper
 
 -- A Show instance
 instance (Show a, Show b) => Show (Tree a b) where
@@ -22,8 +24,6 @@ instance (Show a, Show b) => Show (Tree a b) where
     show (BNode x l r)     = "(" ++ show x ++
                              " " ++ show l ++
                              " " ++ show r ++ ")"
-
-type TreeIB = Tree Int Bool
 
 -- An example value of Tree
 tree :: TreeIB
@@ -114,15 +114,19 @@ test1 =  enter >>> goDown >=> update (\_ -> Leaf 42)
 
 test2 :: Maybe TreeIB
 test2 =  (enter >>> goDown) >=> (goRight >=> goDown >=> goRight)
-               >=> (update (\_ -> Leaf 666) >>> leave >>> return) $ tree
+                >=> (update (\_ -> Leaf 666) >>> leave >>> return) $ tree
 
 test3 :: Maybe TreeIB
-test3 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goRight
+test3 =  enter >>> goDown >=> update (\_ -> Leaf 13)
+     >>> leave >>> return $ tree2
+
+test4 :: Maybe TreeIB
+test4 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goRight
                >=> goUp >=> update (\_ -> Leaf 13)
      >>> leave >>> return $ tree
 
-test4 :: Maybe TreeIB
-test4 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goDown
+test5 :: Maybe TreeIB
+test5 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goDown
     >=> leave >>> return $ tree
 
 testPM1 :: Integer
@@ -144,7 +148,8 @@ runTests = do
     print $ fromJust test1
     print $ fromJust test2
     print $ fromJust test3
---    print $ fromJust test4
+    print $ fromJust test4
+--    print $ fromJust test5
     print testPM1   -- 1
     print testPM2   -- 0
     print testBool1 -- True

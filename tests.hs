@@ -11,19 +11,7 @@ import Data.Maybe
 import Generics.SOP
 
 import TreeExample
-import TreeZipper
-
--- A Show instance
-instance (Show a, Show b) => Show (Tree a b) where
-    show (Leaf x)          = "|" ++ show x ++ "|"
-    show (TNode l m x y r) = "(" ++ show l ++
-                             " " ++ show m ++
-                             " " ++ show x ++
-                             " " ++ show y ++
-                             " " ++ show r ++ ")"
-    show (BNode x l r)     = "(" ++ show x ++
-                             " " ++ show l ++
-                             " " ++ show r ++ ")"
+import GenericZipper
 
 -- An example value of Tree
 tree :: TreeIB
@@ -109,25 +97,29 @@ testBoolNP _   _   = False
 
 -- ------------------------ Testing
 test1 :: Maybe TreeIB
-test1 =  enter >>> goDown >=> update (\_ -> Leaf 42)
+test1 =  enter >>> goDown
+               >=> update (\_ -> Leaf 42)
      >>> leave >>> return $ tree
 
 test2 :: Maybe TreeIB
-test2 =  (enter >>> goDown) >=> (goRight >=> goDown >=> goRight)
-                >=> (update (\_ -> Leaf 666) >>> leave >>> return) $ tree
+test2 =  enter >>> goDown >=> goRight >=> goDown >=> goRight
+               >=> update (\_ -> Leaf 666)
+     >>> leave >>> return $ tree
 
 test3 :: Maybe TreeIB
-test3 =  enter >>> goDown >=> update (\_ -> Leaf 13)
+test3 =  enter >>> goDown
+               >=> update (\_ -> Leaf 13)
      >>> leave >>> return $ tree2
 
 test4 :: Maybe TreeIB
-test4 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goRight
-               >=> goUp >=> update (\_ -> Leaf 13)
+test4 =  enter >>> goDown >=> goRight >=> goRight
+               >=> goDown >=> goRight >=> goUp
+               >=> update (\_ -> Leaf 18)
      >>> leave >>> return $ tree
 
 test5 :: Maybe TreeIB
 test5 =  enter >>> goDown >=> goRight >=> goRight >=> goDown >=> goDown
-    >=> leave >>> return $ tree
+     >=> leave >>> return $ tree
 
 testPM1 :: Integer
 testPM1 = testPM tree

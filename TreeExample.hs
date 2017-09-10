@@ -12,6 +12,18 @@ data Tree a b = Leaf a
               | BNode b (Tree a b) (Tree a b)
     deriving GHC.Generic
 
+-- A Show instance
+instance (Show a, Show b) => Show (Tree a b) where
+    show (Leaf x)          = "|" ++ show x ++ "|"
+    show (TNode l m x y r) = "(" ++ show l ++
+                             " " ++ show m ++
+                             " " ++ show x ++
+                             " " ++ show y ++
+                             " " ++ show r ++ ")"
+    show (BNode x l r)     = "(" ++ show x ++
+                             " " ++ show l ++
+                             " " ++ show r ++ ")"
+
 type TreeIB = Tree Int Bool
 
 type P2 = Proxy ('N 'F)

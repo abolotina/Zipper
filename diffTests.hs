@@ -1,9 +1,10 @@
 {-# LANGUAGE DataKinds, TypeOperators #-}
 module DiffTests where
 
-import TreeZipper
-import GenericContext
 import Generics.SOP
+
+import TreeExample
+import GenericContext
 
 type ExampleSum  = '[ '[Int, Bool]] .++ '[ '[Char, Bool, Int], '[Int]]
 type ExampleSum' = '[ '[Int, Bool], '[Char, Bool, Int], '[Int]]

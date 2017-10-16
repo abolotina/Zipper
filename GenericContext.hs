@@ -1,24 +1,21 @@
 {-# LANGUAGE TypeFamilies, DataKinds, KindSignatures, TypeOperators,
-     UndecidableInstances #-}
+     UndecidableInstances, PolyKinds #-}
 module GenericContext where
 
 import Generics.SOP (Proxy)
 
 -- ------------------------------------------- Type arithmetic
-type family (.++) (xs :: [[*]]) (ys :: [[*]]) :: [[*]]
+type family (.++) (xs :: [[*]]) (ys :: [[*]]) :: [[*]] where
+    (x ': xs) .++ ys = x ': (xs .++ ys)
+    '[]       .++ ys = ys
 
-type instance (x ': xs) .++ ys = x ': (xs .++ ys)
-type instance '[]       .++ ys = ys
+type family (.*) (x :: *) (ys :: [[*]]) :: [[*]] where
+    x .* (ys ': yss) = (x ': ys) ': (x .* yss)
+    x .* '[]         = '[]
 
-type family (.*) (x :: *) (ys :: [[*]]) :: [[*]]
-
-type instance x .* (ys ': yss) = (x ': ys) ': (x .* yss)
-type instance x .* '[]         = '[]
-
-type family (.**) (xs :: [*]) (ys :: [[*]]) :: [[*]]
-
-type instance (x ': xs) .** yss = x .* (xs .** yss)
-type instance '[]       .** yss = yss
+type family (.**) (xs :: [*]) (ys :: [[*]]) :: [[*]] where
+    (x ': xs) .** yss = x .* (xs .** yss)
+    '[]       .** yss = yss
 
 infixr 6 .++
 infixr 7 .*
@@ -30,20 +27,26 @@ data ConsNum = F         -- First
              | None
     deriving Eq
 
-type family ToContext (n :: ConsNum) (a :: *) (code :: [[*]]) :: [[*]]
+type family In (a :: k) (fam :: [k]) :: Bool where
+    In a (a ': fam) = 'True
+    In a (x ': fam) = In a fam
+    In a '[]        = 'False
 
-type instance ToContext n a (xs ': xss)
-    = Proxy n .* DiffProd a xs .++ ToContext ('N n) a xss
-type instance ToContext n a '[] = '[]
+type family If (c :: Bool) (t :: k) (e :: k) where
+    If 'True  t e = t
+    If 'False t e = e
+
+type family ToContext (n :: ConsNum) (fam :: [*]) (code :: [[*]]) :: [[*]] where
+    ToContext n fam '[] = '[]
+    ToContext n fam (xs ': xss)
+        = Proxy n .* DiffProd fam xs .++ ToContext ('N n) fam xss
 
 data Hole = Hole
 data End
 
-type family DiffProd (a :: *) (xs :: [*]) :: [[*]] where
-    DiffProd a '[]       = '[]
-    DiffProd a '[a]      = '[ '[Hole]]
-    DiffProd a '[x]      = '[]
-    DiffProd a '[End, a] = '[ '[]]
-    DiffProd a '[End, x] = '[]
-    DiffProd a (x ': xs)
-        = Hole .* xs .** DiffProd a '[End, x] .++ x .* DiffProd a xs
+type family DiffProd (fam :: [*]) (xs :: [*]) :: [[*]] where
+    DiffProd fam '[]       = '[]
+    DiffProd fam '[x]      = If (In x fam) '[ '[Hole]] '[]
+    DiffProd fam '[End, x] = If (In x fam) '[ '[]]     '[]
+    DiffProd fam (x ': xs)
+        = Hole .* xs .** DiffProd fam '[End, x] .++ x .* DiffProd fam xs

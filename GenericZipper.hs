@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeOperators, TypeFamilies, DataKinds, MultiParamTypeClasses,
     UndecidableInstances, FlexibleInstances, FlexibleContexts, PolyKinds,
-    ConstraintKinds, ScopedTypeVariables, Rank2Types,
-    UndecidableSuperClasses #-}
+    ConstraintKinds, ScopedTypeVariables, Rank2Types, GADTs,
+    UndecidableSuperClasses, TypeApplications #-}
 module GenericZipper where
 
 import GHC.Exts (Constraint)
@@ -9,189 +9,122 @@ import Data.Maybe
 
 import Generics.SOP
 
-import TreeExample
+import Base
 import GenericContext
 
 ----------------------------------------------------------------------------
 --                     Generic zipper implementation
 ----------------------------------------------------------------------------
--- =========================================== Base
+data Family (r :: *) (a :: *) (fam :: [*]) (c :: * -> Constraint) where
+    Family :: (Generic b, Zipper fam c r a b, In b fam ~ 'True)
+           => b -> Family r a fam c
 
--- The definitions in this section are common for implementing
--- navigation primitives for the generic zipper.
+class Proof (p :: Bool) (fam :: [*]) (c :: * -> Constraint)
+            (r :: *) (a :: *) (b :: *) where
+   witness :: Proxy p -> Fam fam c -> Proxy r -> Proxy a
+           -> b -> Maybe (Family r a fam c)
 
-type family Equal a x :: Bool where
-    Equal a a = 'True
-    Equal a x = 'False
+instance Proof 'False fam c r a b where
+   witness _ _ _ _ _ = Nothing
+instance (Generic b, Zipper fam c r a b, In b fam ~ 'True)
+       => Proof 'True fam c r a b where
+   witness _ _ _ _   = Just . Family
 
-class Proof (p :: Bool) (a :: *) (b :: *) where
-    witness :: Proxy p -> Proxy a -> b -> Maybe a
+type ProofIn fam c r a b = Proof (In b fam) fam c r a b
 
-instance Proof 'False a b where
-    witness _ _ _ = Nothing
-instance Proof 'True a a where
-    witness _ _   = Just
+type family AllProof (fam :: [k]) (u :: k -> Constraint) (r :: k)
+                    (a :: k) (xs :: [k]) :: Constraint where
+   AllProof fam c r a '[] = ()
+   AllProof fam c r a (x ': xs)
+       = (ProofIn fam c r a x, AllProof fam c r a xs)
 
-type family AllProof (x :: k) (ys :: [k]) :: Constraint where
-    AllProof x '[]       = ()
-    AllProof x (y ': ys) = (Proof (Equal x y) x y, AllProof x ys)
+appToNP :: All2CFam2C c fam u r a xss
+       => (forall xs. c fam u r a xs => Fam fam u -> Proxy r -> Proxy a
+                                     -> NP I xs -> Maybe (Family r a fam u))
+       -> Proxy c -> Fam fam u -> Proxy r -> Proxy a
+       -> NS (NP I) xss -> Maybe (Family r a fam u)
+appToNP f c pf pr p (S ns) = appToNP f c pf pr p ns
+appToNP f _ pf pr p (Z np) = f pf pr p np
 
-type family All2C (c :: k -> [k] -> Constraint)
-                  (x :: k) (yss :: [[k]]) :: Constraint where
-    All2C c x '[]         = ()
-    All2C c x (ys ': yss) = (c x ys, All2C c x yss)
-
-appToNP :: All2C c a xss
-        => (forall xs. c a xs => Proxy a -> NP I xs -> Maybe a)
-        -> Proxy c -> Proxy a -> NS (NP I) xss -> Maybe a
-appToNP f c p (S ns) = appToNP f c p ns
-appToNP f _ p (Z np) = f p np
-
--- ===========================================
 -- ------------------------------------------- toFirst
 {-toFirst :: TreeIB -> TreeIB
 toFirst (Leaf _)          = impossible
 toFirst (TNode t _ _ _ _) = t
 toFirst (BNode _ t _)     = t-}
 
-toFirst :: (Generic a, ToFirst a) => a -> Maybe a
-toFirst t = appToNP toFirstNP (Proxy :: Proxy AllProof')
-                              (Proxy :: Proxy a) (unSOP $ from t)
+toFirst :: (Generic a, ToFirst fam c r a)
+        => Fam fam c -> Proxy r -> a -> Maybe (Family r a fam c)
+toFirst pf pr (t :: a)
+    = appToNP toFirstNP (Proxy @AllProof') pf pr (Proxy @a)
+                        (unSOP $ from t)
 
-class AllProof x ys => AllProof' x ys
-instance AllProof x ys => AllProof' x ys
+class AllProof fam c r a xs => AllProof' fam c r a xs
+instance AllProof fam c r a xs => AllProof' fam c r a xs
 
-type ToFirst a = All2C AllProof' a (Code a)
+type ToFirst fam c r a = All2CFam2C AllProof' fam c r a (Code a)
 
-toFirstNP :: AllProof a xs => Proxy a -> NP I xs -> Maybe a
-toFirstNP (p :: Proxy a) (I (x :: b) :* xs)
-    = fromMaybe (toFirstNP p xs)
-                (case witness (Proxy :: Proxy (Equal a b)) p x of
+toFirstNP :: AllProof fam c r a xs
+          => Fam fam c -> Proxy r -> Proxy a
+          -> NP I xs -> Maybe (Family r a fam c)
+toFirstNP (pf :: Fam fam c) pr p (I (x :: b) :* xs)
+    = fromMaybe (toFirstNP pf pr p xs)
+                (case witness (Proxy @(In b fam)) pf pr p x of
                      Nothing -> Nothing
                      t       -> Just t)
-toFirstNP _ Nil = Nothing
+toFirstNP _ _ _ Nil = Nothing
 
--- ===========================================
-type CtxCode  a = ToContext 'F a (Code a)
-type GContext a = SOP I (CtxCode a)
-
-type family AllProofF (f :: k -> *)
-                      (x :: k) (ys :: [k]) :: Constraint where
-    AllProofF f x '[]       = ()
-    AllProofF f x (y ': ys)
-        = (Proof (Equal x y) (f x) (f y), AllProofF f x ys)
-
-class ConsNumInj (n :: ConsNum) (xs :: [k]) where
-    consNumInj :: AllProofF f xs yss
-               => Proxy n -> Proxy xs -> NP f yss -> f xs
-
-instance ConsNumInj n xs => ConsNumInj ('N n) xs where
-    consNumInj _ p (_ :* yss) = consNumInj (Proxy :: Proxy n) p yss
-    consNumInj _ _ Nil        = impossible
-instance ConsNumInj 'F xs where
-    consNumInj _ _ ((ys :: f ys) :* _)
-        = fromMaybe impossible
-                    (witness (Proxy :: Proxy (Equal xs ys))
-                             (Proxy :: Proxy (f xs)) ys)
-    consNumInj _ _ Nil = impossible
-instance ConsNumInj 'None xs where
-    consNumInj _ _ _   = impossible
-
-type family FstRecToHole (a :: k) (xs :: [k]) :: [k] where
-    FstRecToHole a (a ': xs) = Hole ': xs
-    FstRecToHole a (x ': xs) = x    ': FstRecToHole a xs
-    FstRecToHole a '[]       = '[]
-
-class FromFstRec (xs :: [*]) (ys :: [*]) where
-    fromFstRec :: Proxy ys -> NP I xs -> NP I ys
-
-instance FromFstRec (x ': xs) (Hole ': xs) where
-    fromFstRec _ (_ :* xs) = I Hole :* xs
-instance FromFstRec xs ys => FromFstRec (x ': xs) (x ': ys) where
-    fromFstRec _ (x :* xs) = x      :* fromFstRec (Proxy :: Proxy ys) xs
-instance FromFstRec '[] '[] where
-    fromFstRec _ _         = Nil
-
-type family All2CN (c :: ConsNum -> [k] -> k -> Constraint)
-                   (xss :: [[k]]) (a :: k)
-                   (n :: ConsNum) :: Constraint where
-    All2CN c '[]         a n = ()
-    All2CN c (xs ': xss) a n
-        = (c n xs a, All2CN c xss a n, All2CN c xss a ('N n))
-
-type family All2CFN2 (c :: ConsNum -> ([k] -> *) -> [k] -> [[k]] -> k
-                        -> Constraint)
-                     (f :: [k] -> *) (xss :: [[k]]) (yss :: [[k]]) (a :: k)
-                     (n :: ConsNum) :: Constraint where
-    All2CFN2 c f '[]         yss a n = ()
-    All2CFN2 c f (xs ': xss) yss a n
-        = (c n f xs yss a,
-           All2CFN2 c f xss yss a n, All2CFN2 c f xss yss a ('N n))
-
-type AppInj n xs code = (ConsNumInj n xs, SListI code,
-                         AllProofF (Injection (NP I) code) xs code)
-
-appCtxInj :: AppInj n xs (CtxCode a)
-          => Proxy a -> Proxy (n :: ConsNum) -> NP I xs -> GContext a
-appCtxInj _ p np = SOP $ unK $ apFn (consNumInj p Proxy injections) np
-
-appInj :: AppInj n xs (Code a)
-       => Proxy a -> Proxy (n :: ConsNum) -> NP I xs -> Rep a
-appInj _ p np = SOP $ unK $ apFn (consNumInj p Proxy injections) np
-
--- ===========================================
 -- ------------------------------------------- toCtxFirst
 {-toCtxFirst :: TreeIB -> GContext TreeIB
 toCtxFirst (Leaf _)          = impossible
 toCtxFirst (TNode _ m x y r) = from (TNode1 Proxy Hole m x y r)
 toCtxFirst (BNode x _ r)     = from (BNode1 Proxy x Hole r)-}
 
-toCtxFirst :: (Generic a, ToCtxFirst a) => a -> GContext a
-toCtxFirst (t :: a) = toCtxFirstNS (Proxy :: Proxy a)
-                                   (Proxy :: Proxy 'F) (unSOP $ from t)
+toCtxFirst :: (Generic a, ToCtxFirst fam a)
+           => Fam fam c -> a -> Context fam a
+toCtxFirst pf (t :: a) = toCtxFirstNS pf (Proxy @a) (Proxy @'F)
+                                      (unSOP $ from t)
 
 type family CtxConsNum (xss :: [[k]]) (n :: ConsNum) :: ConsNum where
     CtxConsNum '[]                       n = 'None
     CtxConsNum ((Proxy n  ': xs) ': xss) n = 'F
     CtxConsNum ((Proxy n' ': xs) ': xss) n = 'N (CtxConsNum xss n)
 
-class ConsNumInj (CtxConsNum (CtxCode a) n)
-                 (Proxy n ': FstRecToHole a xs) => CtxConsNInj n xs a
-instance ConsNumInj (CtxConsNum (CtxCode a) n)
-                    (Proxy n ': FstRecToHole a xs) => CtxConsNInj n xs a
+class ConsNumInj (CtxConsNum (CtxCode fam a) n)
+                 (Proxy n ': FstRecToHole fam xs)
+    => CtxConsNInj n xs fam a
+instance ConsNumInj (CtxConsNum (CtxCode fam a) n)
+                    (Proxy n ': FstRecToHole fam xs)
+    => CtxConsNInj n xs fam a
 
-class AllProofF f (Proxy n ': FstRecToHole a xs) yss
-    => CtxAllProofF n f xs yss a
-instance AllProofF f (Proxy n ': FstRecToHole a xs) yss
-    => CtxAllProofF n f xs yss a
+class AllProofF f (Proxy n ': FstRecToHole fam xs) yss
+    => CtxAllProofF n f fam xs yss
+instance AllProofF f (Proxy n ': FstRecToHole fam xs) yss
+    => CtxAllProofF n f fam xs yss
 
-class FromFstRec xs (FstRecToHole a xs) => FromFstRec' a xs
-instance FromFstRec xs (FstRecToHole a xs) => FromFstRec' a xs
+class FromFstRec xs (FstRecToHole fam xs) => FromFstRec' fam xs
+instance FromFstRec xs (FstRecToHole fam xs) => FromFstRec' fam xs
 
-type ToCtxFirst' a n xss = (SListI (CtxCode a), All2C FromFstRec' a xss,
-                            All2CN CtxConsNInj xss a n,
-                            All2CFN2 CtxAllProofF
-                                     (Injection (NP I) (CtxCode a))
-                                     xss (CtxCode a) a n)
+type ToCtxFirst' fam a n xss = (SListI (CtxCode fam a),
+                                All2CFam FromFstRec' fam xss,
+                                All2CN CtxConsNInj xss fam a n,
+                                All2CFN2 CtxAllProofF
+                                         (Injection (NP I)
+                                         (CtxCode fam a))
+                                         fam xss (CtxCode fam a) n)
 
-type ToCtxFirst a = ToCtxFirst' a 'F (Code a)
+type ToCtxFirst fam a = ToCtxFirst' fam a 'F (Code a)
 
-toCtxFirstNS :: ToCtxFirst' a n xss
-             => Proxy a -> Proxy (n :: ConsNum)
-             -> NS (NP I) xss -> GContext a
-toCtxFirstNS p (_ :: Proxy n) (S ns)
-    = toCtxFirstNS p (Proxy :: Proxy ('N n)) ns
-toCtxFirstNS (p :: Proxy a) (_ :: Proxy n) (Z (np :: NP I xs))
-    = appCtxInj p (Proxy :: Proxy (CtxConsNum (CtxCode a) n))
-                  (I (Proxy :: Proxy n) :*
-                   fromFstRec (Proxy :: Proxy (FstRecToHole a xs)) np)
+toCtxFirstNS :: ToCtxFirst' fam a n xss
+             => Fam fam c -> Proxy a -> Proxy (n :: ConsNum)
+             -> NS (NP I) xss -> Context fam a
+toCtxFirstNS pf p (_ :: Proxy n) (S ns)
+    = toCtxFirstNS pf p (Proxy @('N n)) ns
+toCtxFirstNS (pf :: Fam fam c) (p :: Proxy a) (_ :: Proxy n)
+             (Z (np :: NP I xs))
+    = appCtxInj pf p (Proxy @(CtxConsNum (CtxCode fam a) n))
+                     (I (Proxy @n) :*
+                      fromFstRec (Proxy @(FstRecToHole fam xs)) np)
 
--- ===========================================
-type family IsHole (xs :: [k]) :: [Bool] where
-    IsHole (Hole ': xs) = '[ 'True]
-    IsHole (x    ': xs) = 'False ': IsHole xs
-
--- ===========================================
 -- ------------------------------------------- fillCtx
 {-fillCtx :: GContext TreeIB -> TreeIB -> TreeIB
 fillCtx tc t = case to tc of
@@ -201,50 +134,56 @@ fillCtx tc t = case to tc of
     BNode1 _ x _ r     -> BNode x t r
     BNode2 _ x l _     -> BNode x l t-}
 
-fillCtx :: (Generic a, FillCtx a) => GContext a -> a -> a
-fillCtx c t = to $ fillCtxNS (Proxy :: Proxy a) (unSOP c) t
+fillCtx :: (Generic a, FillCtx fam a b,
+            In a fam ~ 'True, Zipper fam c r x a)
+        => Context fam a -> Proxy r -> Proxy x -> b -> Family r x fam c
+fillCtx (c :: Context fam a) _ p (t :: b)
+    = Family $ to @a $ fillCtxNS (Proxy @a) (unSOP $ ctx c) t
 
 type family HoleToRec (xs :: [k]) (a :: k) :: [k] where
     HoleToRec (Proxy n ': xs) a = HoleToRec xs a
     HoleToRec (Hole    ': xs) a = a ': xs
     HoleToRec (x       ': xs) a = x ': HoleToRec xs a
 
-class FillHole (bs :: [Bool]) (xs :: [*]) (ys :: [*]) (a :: *) where
-    fillHole :: Proxy bs -> Proxy ys -> NP I xs -> a -> NP I ys
+class FillHole (xs :: [*]) (ys :: [*]) (a :: *) where
+    fillHole :: Proxy ys -> NP I xs -> a -> NP I ys
 
-instance FillHole bs xs ys a
-        => FillHole ('False ': bs) (Proxy n ': xs) ys a where
-    fillHole _ _ (_ :* xs)
-        = fillHole (Proxy :: Proxy bs) (Proxy :: Proxy ys) xs
-instance FillHole '[ 'True] (Hole ': ys) (y ': ys) y where
-    fillHole _ _ (_ :* xs) t = I t :* xs
-instance FillHole bs xs ys a
-        => FillHole ('False ': bs) (y ': xs) (y ': ys) a where
-    fillHole _ _ (x :* xs) t
-        = x :* fillHole (Proxy :: Proxy bs) (Proxy :: Proxy ys) xs t
+instance FillHole xs ys a
+        => FillHole (Proxy n ': xs) ys a where
+    fillHole _ (_ :* xs)
+        = fillHole (Proxy @ys) xs
+instance FillHole (Hole ': ys) (y ': ys) y where
+    fillHole _ (_ :* xs) t = I t :* xs
+instance FillHole xs ys a
+        => FillHole (y ': xs) (y ': ys) a where
+    fillHole _ (x :* xs) t
+        = x :* fillHole (Proxy @ys) xs t
+instance FillHole '[] '[] a where
+    fillHole _ _ _ = impossible
 
 type family DataConsNum (xs :: [k]) :: ConsNum where
     DataConsNum (Proxy n ': xs) = n
 
-class (FillHole (IsHole xs) xs (HoleToRec xs a) a,
-       ConsNumInj (DataConsNum xs) (HoleToRec xs a),
-       AllProofF (Injection (NP I) (Code a)) (HoleToRec xs a) (Code a))
-    => FillCtx' a xs
+class (FillHole xs (HoleToRec xs b) b,
+       ConsNumInj (DataConsNum xs) (HoleToRec xs b),
+       AllProofF (Injection (NP I) (Code a))
+                 (HoleToRec xs b) (Code a))
+    => FillCtx' a b xs
 
-instance (FillHole (IsHole xs) xs (HoleToRec xs a) a,
-          ConsNumInj (DataConsNum xs) (HoleToRec xs a),
-          AllProofF (Injection (NP I) (Code a)) (HoleToRec xs a) (Code a))
-    => FillCtx' a xs
+instance (FillHole xs (HoleToRec xs b) b,
+          ConsNumInj (DataConsNum xs) (HoleToRec xs b),
+          AllProofF (Injection (NP I) (Code a))
+                    (HoleToRec xs b) (Code a))
+    => FillCtx' a b xs
 
-type FillCtx a = All2C FillCtx' a (CtxCode a)
+type FillCtx fam a b = All2C FillCtx' a b (CtxCode fam a)
 
-fillCtxNS :: (SListI (Code a), All2C FillCtx' a xss)
-          => Proxy a -> NS (NP I) xss -> a -> Rep a
+fillCtxNS :: (SListI (Code a), All2C FillCtx' a b xss)
+          => Proxy a -> NS (NP I) xss -> b -> Rep a
 fillCtxNS p (S ns) t = fillCtxNS p ns t
-fillCtxNS (p :: Proxy a) (Z (np :: NP I xs)) t
-    = appInj p (Proxy :: Proxy (DataConsNum xs))
-               (fillHole (Proxy :: Proxy (IsHole xs))
-                         (Proxy :: Proxy (HoleToRec xs a)) np t)
+fillCtxNS p (Z (np :: NP I xs)) (t :: b)
+    = appInj p (Proxy @(DataConsNum xs))
+               (fillHole (Proxy @(HoleToRec xs b)) np t)
 
 -- ------------------------------------------- nextCtx
 {-nextCtx :: GContext TreeIB -> TreeIB -> GContext TreeIB
@@ -255,52 +194,58 @@ nextCtx tc t = case to tc of
     BNode1 _ x _ _     -> from (BNode2 Proxy x t Hole)
     BNode2{}           -> impossible-}
 
-nextCtx :: (Generic a, NextCtx a) => GContext a -> a -> GContext a
-nextCtx c = nextCtxNS (Proxy :: Proxy a) (Proxy :: Proxy 'F) (unSOP c)
+nextCtx :: NextCtx fam a b => Context fam a -> b -> Context fam a
+nextCtx (c :: Context fam a)
+    = nextCtxNS (Fam @fam) (Proxy @a) (Proxy @'F) (unSOP $ ctx c)
 
-type family ToNextHole (xs :: [k]) (a :: k) :: [k] where
-    ToNextHole (Proxy n ': xs) a = Proxy n ': ToNextHole xs a
-    ToNextHole (Hole    ': xs) a = a       ': FstRecToHole a xs
-    ToNextHole (x       ': xs) a = x       ': ToNextHole xs a
+type family ToNextHole (xs :: [k]) (fam :: [k]) (a :: k) :: [k] where
+    ToNextHole (Proxy n ': xs) fam a = Proxy n ': ToNextHole xs fam a
+    ToNextHole (Hole    ': xs) fam a = a       ': FstRecToHole fam xs
+    ToNextHole (x       ': xs) fam a = x       ': ToNextHole xs fam a
+    ToNextHole '[]             fam a = '[]
 
 class NextHole (bs :: [Bool]) (xs :: [*]) (ys :: [*]) (a :: *) where
     nextHole :: Proxy bs -> Proxy ys -> NP I xs -> a -> NP I ys
 
 instance FromFstRec xs ys
         => NextHole '[ 'True] (Hole ': xs) (y ': ys) y where
-    nextHole _ _ (_ :* xs) t = I t :* fromFstRec (Proxy :: Proxy ys) xs
+    nextHole _ _ (_ :* xs) t = I t :* fromFstRec (Proxy @ys) xs
 instance NextHole bs xs ys a
         => NextHole ('False ': bs) (y ': xs) (y ': ys) a where
     nextHole _ _ (x :* xs) t
-        = x :* nextHole (Proxy :: Proxy bs) (Proxy :: Proxy ys) xs t
+        = x :* nextHole (Proxy @bs) (Proxy @ys) xs t
+instance NextHole '[] '[] '[] a where
+    nextHole _ _ _ _ = impossible
 
-class ConsNumInj n (ToNextHole xs a) => NextCtxConsNInj n xs a
-instance ConsNumInj n (ToNextHole xs a) => NextCtxConsNInj n xs a
+class ConsNumInj n (ToNextHole xs fam a) => NextCtxConsNInj n xs fam a
+instance ConsNumInj n (ToNextHole xs fam a) => NextCtxConsNInj n xs fam a
 
-class (NextHole (IsHole xs) xs (ToNextHole xs a) a,
-       AllProofF (Injection (NP I) (CtxCode a))
-                 (ToNextHole xs a) (CtxCode a))
-    => NextCtx'' a xs
+class (NextHole (IsHole xs) xs (ToNextHole xs fam b) b,
+       AllProofF (Injection (NP I) (CtxCode fam a))
+                 (ToNextHole xs fam b) (CtxCode fam a))
+    => NextCtx'' fam a b xs
 
-instance (NextHole (IsHole xs) xs (ToNextHole xs a) a,
-          AllProofF (Injection (NP I) (CtxCode a))
-                    (ToNextHole xs a) (CtxCode a))
-    => NextCtx'' a xs
+instance (NextHole (IsHole xs) xs (ToNextHole xs fam b) b,
+          AllProofF (Injection (NP I) (CtxCode fam a))
+                    (ToNextHole xs fam b) (CtxCode fam a))
+    => NextCtx'' fam a b xs
 
-type NextCtx' a n xss = (SListI (CtxCode a), All2C NextCtx'' a xss,
-                         All2CN NextCtxConsNInj xss a n)
+type NextCtx' fam a b n xss = (SListI (CtxCode fam a),
+                               All2CFam2 NextCtx'' fam a b xss,
+                               All2CN NextCtxConsNInj xss fam b n)
 
-type NextCtx a = NextCtx' a 'F (CtxCode a)
+type NextCtx fam a b = NextCtx' fam a b 'F (CtxCode fam a)
 
-nextCtxNS :: NextCtx' a n xss
-          => Proxy a -> Proxy (n :: ConsNum)
-          -> NS (NP I) xss -> a -> GContext a
-nextCtxNS p (_ :: Proxy n) (S ns) t
-    = nextCtxNS p (Proxy :: Proxy ('N n)) ns t
-nextCtxNS (p :: Proxy a) (_ :: Proxy n) (Z (np :: NP I xs)) t
-    = appCtxInj p (Proxy :: Proxy ('N n))
-                  (nextHole (Proxy :: Proxy (IsHole xs))
-                            (Proxy :: Proxy (ToNextHole xs a)) np t)
+nextCtxNS :: NextCtx' fam a b n xss
+          => Fam fam c -> Proxy a -> Proxy (n :: ConsNum)
+          -> NS (NP I) xss -> b -> Context fam a
+nextCtxNS pf p (_ :: Proxy n) (S ns) t
+    = nextCtxNS pf p (Proxy @('N n)) ns t
+nextCtxNS (pf :: Fam fam c) p (_ :: Proxy n)
+          (Z (np :: NP I xs)) (t :: b)
+    = appCtxInj pf p (Proxy @('N n))
+                     (nextHole (Proxy @(IsHole xs))
+                               (Proxy @(ToNextHole xs fam b)) np t)
 
 -- ------------------------------------------- nextFromCtx
 {-nextFromCtx :: GContext TreeIB -> TreeIB
@@ -311,9 +256,11 @@ nextFromCtx tc = case to tc of
     BNode1 _ _ _ t     -> t
     BNode2{}           -> impossible-}
 
-nextFromCtx :: (Generic a, NextFromCtx a) => GContext a -> Maybe a
-nextFromCtx c = appToNP nextFromCtxNP (Proxy :: Proxy NextFromCtx')
-                                      (Proxy :: Proxy a) (unSOP c)
+nextFromCtx :: NextFromCtx fam c r a
+            => Context fam a -> Proxy r -> Maybe (Family r a fam c)
+nextFromCtx (c :: Context fam a) pr
+    = appToNP nextFromCtxNP (Proxy @NextFromCtx') (Fam @fam) pr (Proxy @a)
+                            (unSOP $ ctx c)
 
 type family AfterHole (xs :: [k]) :: [k] where
     AfterHole (Hole ': xs) = xs
@@ -323,61 +270,76 @@ class FindHole (bs :: [Bool]) (xs :: [*]) (ys :: [*]) where
     afterHole :: Proxy bs -> Proxy ys -> NP I xs -> NP I ys
 
 instance FindHole bs xs ys => FindHole ('False ': bs) (x ': xs) ys where
-    afterHole _ p (_ :* xs) = afterHole (Proxy :: Proxy bs) p xs
+    afterHole _ p (_ :* xs) = afterHole (Proxy @bs) p xs
 instance FindHole '[ 'True] (Hole ': ys) ys where
     afterHole _ _ (_ :* xs) = xs
 
-class (AllProof a (AfterHole xs), FindHole (IsHole xs) xs (AfterHole xs))
-    => NextFromCtx' a xs
-instance (AllProof a (AfterHole xs), FindHole (IsHole xs) xs (AfterHole xs))
-    => NextFromCtx' a xs
+class (AllProof fam c r a (AfterHole xs),
+       FindHole (IsHole xs) xs (AfterHole xs))
+    => NextFromCtx' fam c r a xs
+instance (AllProof fam c r a (AfterHole xs),
+          FindHole (IsHole xs) xs (AfterHole xs))
+    => NextFromCtx' fam c r a xs
 
-type NextFromCtx a = All2C NextFromCtx' a (CtxCode a)
+type NextFromCtx fam c r a = All2CFam2C NextFromCtx' fam c r a (CtxCode fam a)
 
-nextFromCtxNP :: NextFromCtx' a xs => Proxy a -> NP I xs -> Maybe a
-nextFromCtxNP p (ys :: NP I xs)
-    = toFirstNP p $ afterHole (Proxy :: Proxy (IsHole xs))
-                              (Proxy :: Proxy (AfterHole xs)) ys
+nextFromCtxNP :: NextFromCtx' fam c r a xs
+              => Fam fam c -> Proxy r -> Proxy a
+              -> NP I xs -> Maybe (Family r a fam c)
+nextFromCtxNP pf pr p (ys :: NP I xs)
+    = toFirstNP pf pr p $ afterHole (Proxy @(IsHole xs))
+                                    (Proxy @(AfterHole xs)) ys
 
 -- ------------------------------------------- Navigation functions
-type Loc a     = (a, [GContext a])
+data Contexts (r :: *) (a :: *) (fam :: [*]) (c :: * -> Constraint) where
+    CNil :: Contexts a a fam c
+    Ctxs :: (Generic a, In a fam ~ 'True, c a, Zipper fam c r x a)
+         => Context fam a -> Contexts r x fam c -> Contexts r a fam c
 
-type GoDown  a = (ToFirst a, ToCtxFirst a)
-type GoRight a = (NextCtx a, NextFromCtx a)
-type GoUp    a = FillCtx a
+data Loc (r :: *) (fam :: [*]) (c :: * -> Constraint) where
+    Loc :: Family r a fam c -> Contexts r a fam c -> Loc r fam c
 
-goDown :: (Generic a, GoDown a) => Loc a -> Maybe (Loc a)
-goDown (t, cs) = case toFirst t of
-    Just t' -> Just (t', toCtxFirst t : cs)
-    _       -> Nothing
+type GoDown  fam c r a   = (ToFirst fam c r a, ToCtxFirst fam a)
+type GoRight fam c r a b = (NextCtx fam a b, NextFromCtx fam c r a)
+type GoUp    fam a b     = FillCtx fam a b
 
-goRight :: (Generic a, GoRight a) => Loc a -> Maybe (Loc a)
-goRight (_, [])     = Nothing
-goRight (t, c : cs) = case nextFromCtx c of
-    Just t' -> Just (t', nextCtx c t : cs)
-    _       -> Nothing
+type Zipper fam c r a b
+    = (GoDown fam c r b, GoRight fam c r a b, GoUp fam a b,
+       ProofEq r b, c b)
 
-goUp :: (Generic a, GoUp a) => Loc a -> Maybe (Loc a)
-goUp (_, [])     = Nothing
-goUp (t, c : cs) = Just (fillCtx c t, cs)
+goDown :: Loc a fam c -> Maybe (Loc a fam c)
+goDown (Loc (Family t) cs :: Loc a fam c)
+    = case toFirst (Fam @fam) (Proxy @a) t of
+        Just t' -> Just $ Loc t' (Ctxs (toCtxFirst (Fam @fam) t) cs)
+        _       -> Nothing
+
+goRight :: Loc a fam c -> Maybe (Loc a fam c)
+goRight (Loc _ CNil) = Nothing
+goRight (Loc (Family t) (Ctxs c cs) :: Loc a fam c)
+    = case nextFromCtx c (Proxy @a) of
+        Just t' -> Just (Loc t' (Ctxs (nextCtx c t) cs))
+        _       -> Nothing
+
+goUp :: Loc a fam c -> Maybe (Loc a fam c)
+goUp (Loc _ CNil) = Nothing
+goUp (Loc (Family t) (Ctxs c (cs :: Contexts a x fam c)))
+    = Just (Loc (fillCtx c (Proxy @a) (Proxy @x) t) cs)
 
 -- Start navigating
-enter :: Generic a => a -> Loc a
-enter hole = (hole, [])
+enter :: (Generic a, In a fam ~ 'True, Zipper fam c a a a)
+      => Fam fam c -> a -> Loc a fam c
+enter (_ :: Fam fam c) (hole :: a) = Loc (Family hole) (CNil @a @fam @c)
 
 -- End navigating
-leave :: (Generic a, GoUp a) => Loc a -> a
-leave (hole, []) = hole
-leave loc        = leave $ fromJust $ goUp loc
+leave :: Loc a fam c -> a
+leave (Loc (Family (hole :: b) :: Family a x fam c) CNil)
+    = fromJust $ witnessEq (Proxy @(Equal a b)) (Proxy @a) hole
+leave loc = leave $ fromJust $ goUp loc
 
 -- Update the current focus
-update :: Generic a => (a -> a) -> Loc a -> Loc a
-update f (hole, cs) = (f hole, cs)
+update :: (forall b. c b => b -> b) -> Loc a fam c -> Loc a fam c
+update f (Loc (Family hole) cs) = Loc (Family (f hole)) cs
 
 -- Flipped function composition
 (>>>) :: (a -> b) -> (b -> c) -> a -> c
 (>>>) f g = g . f
-
--- Internal error function
-impossible :: a
-impossible =  error "impossible"

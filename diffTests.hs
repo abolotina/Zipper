@@ -38,7 +38,7 @@ testProd1 = S (Z (I 5 :* I 'x' :* Nil))
 
 data Tree' = BNode' Int Tree' Tree' | MNode' Char Tree' | Leaf'
 
-type Test = ToContext 'F Tree' '[ '[Int, Tree', Tree'], '[]]
+type Test = ToContext 'F '[Tree'] '[ '[Int, Tree', Tree'], '[]]
 
 test :: NS (NP I) Test
 test = Z (I Proxy :* I 5 :* I Hole :* I Leaf' :* Nil)
@@ -48,12 +48,12 @@ type Test' = '[Int, Tree'] .** ('[ '[]] .++ '[ '[]])
 test' :: NS (NP I) Test'
 test' = Z (I 5 :* I Leaf' :* Nil)
 
-type Test'' = DiffProd Tree' '[Tree', Tree']
+type Test'' = DiffProd '[Tree'] '[Tree', Tree']
 
 test'' :: NS (NP I) Test''
 test'' = S (Z (I Leaf' :* I Hole :* Nil))
 
-type Test''' = ToContext 'F Tree' '[ '[Int, Tree', Tree'], '[Char, Tree'], '[]]
+type Test''' = ToContext 'F '[Tree'] '[ '[Int, Tree', Tree'], '[Char, Tree'], '[]]
 
 test1 :: NS (NP I) Test'''
 test1 = Z (I Proxy :* I 5 :* I Hole :* I Leaf' :* Nil)
@@ -61,7 +61,15 @@ test1 = Z (I Proxy :* I 5 :* I Hole :* I Leaf' :* Nil)
 test2 :: NS (NP I) Test'''
 test2 = S (S (Z (I Proxy :* I 'a' :* I Hole :* Nil)))
 
-type GTreeCtx' a b = ToContext 'F (Tree a b) (Code (Tree a b))
+type TestMut = ToContext 'F '[Tree', Int] '[ '[Int, Tree', Tree'], '[Char, Tree'], '[]]
+
+testMut1 :: NS (NP I) TestMut
+testMut1 = Z (I Proxy :* I Hole :* I Leaf' :* I Leaf' :* Nil)
+
+testMut2 :: NS (NP I) TestMut
+testMut2 = S (S (S (Z (I Proxy :* I 'a' :* I Hole :* Nil))))
+
+type GTreeCtx' a b = ToContext 'F '[Tree a b] (Code (Tree a b))
 
 testTree1 :: NS (NP I) (GTreeCtx' Int Char)
 testTree1 = Z (I Proxy :* I Hole :* I (Leaf 2) :* I 5 :* I 'b' :* I (Leaf 2) :* Nil)

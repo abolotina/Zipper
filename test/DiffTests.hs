@@ -4,7 +4,7 @@ module DiffTests where
 import Generics.SOP
 
 import TreeExample
-import GenericContext
+import Generics.Zipper.GenericContext
 
 type ExampleSum  = '[ '[Int, Bool]] .++ '[ '[Char, Bool, Int], '[Int]]
 type ExampleSum' = '[ '[Int, Bool], '[Char, Bool, Int], '[Int]]

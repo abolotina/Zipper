@@ -3,17 +3,16 @@
     ConstraintKinds, ScopedTypeVariables, MultiParamTypeClasses,
     FlexibleContexts, UndecidableSuperClasses, TypeApplications,
     Rank2Types #-}
-module Tests where
+module Main where
 
 import GHC.Exts (Constraint)
-import Control.Monad
 import Data.Maybe
 
-import Generics.SOP
-
+import qualified DiffTests
 import TreeExample
-import Base
-import GenericZipper
+import Generics.Zipper
+import Generics.Zipper.Base
+import Generics.GShow
 
 -- An example value of Tree
 tree :: TreeIB
@@ -209,6 +208,7 @@ mutTest4 =  enter (Fam @MutTreeFam @UpdateInt)
 -- Print the results of tests
 runTests :: IO ()
 runTests = do
+    putStrLn $ gShow tree
     print $ from tree
     print $ fromJust test1
     print $ fromJust test2
@@ -223,3 +223,6 @@ runTests = do
     print testPM2   -- 0
     print testBool1 -- True
     print testBool2 -- False
+
+main :: IO ()
+main = runTests

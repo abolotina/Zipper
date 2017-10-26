@@ -1,6 +1,16 @@
 {-# LANGUAGE TypeFamilies, DataKinds, KindSignatures, TypeOperators,
      UndecidableInstances, PolyKinds #-}
-module GenericContext where
+-- | Type-level functions of this module implement the machinery of
+-- partial differentiation of types. The result of differentiation is
+-- the type of the zipper context.
+--
+-- The basic idea is provided by McBride's /The Derivative of a Regular Type is its Type of One-Hole Contexts/
+-- (2001).
+--
+-- This realization extends that technique for families of mutually
+-- recursive types.
+--
+module Generics.Zipper.GenericContext where
 
 import Generics.SOP (Proxy)
 

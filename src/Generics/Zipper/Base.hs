@@ -2,20 +2,26 @@
     UndecidableInstances, FlexibleInstances, FlexibleContexts, PolyKinds,
     ConstraintKinds, ScopedTypeVariables, Rank2Types, GADTs,
     UndecidableSuperClasses, TypeApplications #-}
-module Base where
+-- | Definitions in this module are common for implementing
+-- navigation primitives for the generic zipper.
+module Generics.Zipper.Base (
+    module Generics.Zipper.Base
+    -- * Re-exports
+  , module Generics.SOP) where
 
 import GHC.Exts (Constraint)
 import Data.Maybe
 
 import Generics.SOP
 
-import GenericContext
+import Generics.Zipper.GenericContext
 
 -- =========================================== Base
 
--- The definitions in this module are common for implementing
--- navigation primitives for the generic zipper.
-
+-- | This datatype fixes the type for a family of mutually recursive
+-- datatypes, which is a promoted list of types that you consider as
+-- mutually recursive. The parameter @c@ fixes all constraints applied
+-- to each datatype in the family.
 data Fam (fam :: [*]) (c :: * -> Constraint) = Fam
 
 type family Equal a x :: Bool where

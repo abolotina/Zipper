@@ -4,7 +4,7 @@ module TreeExample where
 import Generics.SOP
 import qualified GHC.Generics as GHC (Generic)
 
-import GenericContext
+import Generics.Zipper.GenericContext
 
 -- An example of a datatype: Tree
 data Tree a b = Leaf a
@@ -23,6 +23,7 @@ data MutTree2 a b = Leaf2 a
     deriving GHC.Generic
 
 instance Generic (Tree a b)
+instance HasDatatypeInfo (Tree a b)
 instance Generic (MutTree1 a b)
 instance Generic (MutTree2 a b)
 

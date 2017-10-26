@@ -1,15 +1,14 @@
 {-# LANGUAGE DataKinds, TypeApplications, TypeSynonymInstances,
     FlexibleInstances, DeriveGeneric #-}
 
-module Example where
+module Main where
 
-import Control.Monad
+import Data.Maybe
 
 import Generics.SOP
 import qualified GHC.Generics as GHC (Generic)
 
-import Base
-import GenericZipper
+import Generics.Zipper
 
 -- An example of a family of mutually recursive datatypes
 data Expr = Const Int
@@ -42,24 +41,6 @@ instance Update Var
 
 -- An example of using the generic zipper
 
--- A type for a family of mutually recursive datatypes is a promoted list
--- of types that you consider as mutually recursive,
--- fixed by the datatype 'Fam':
-
--- @
---   data Fam (fam :: [*]) (c :: * -> Constraint) = Fam
--- @
-
--- The parameter 'c' is needed to fix all constraints, applied to each
--- datatype in the family.
-
--- The flipped function composition '>>>' and flipped kleisli (monadic)
--- composition '>=>' are helpful to combine the navigation and
--- edit operations.
-
--- The following code requires the 'TypeApplications' extension.
--- You may substitute for @(Fam :: Fam ExampleFam Update)@.
-
 type ExampleFam1 = '[Expr, Decl, Var]
 
 test1 = enter (Fam @ExampleFam1 @Update)
@@ -77,3 +58,8 @@ test2 = enter (Fam @ExampleFam2 @Update)
 
 -- The result is
 -- Just (Let ("x" := Mul (Const 6) (Const 9)) (Add (EVar "x") (Const 42)))
+
+main :: IO ()
+main = do
+    print $ fromJust test1
+    print $ fromJust test2

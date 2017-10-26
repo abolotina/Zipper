@@ -2,15 +2,34 @@
     UndecidableInstances, FlexibleInstances, FlexibleContexts, PolyKinds,
     ConstraintKinds, ScopedTypeVariables, Rank2Types, GADTs,
     UndecidableSuperClasses, TypeApplications #-}
-module GenericZipper where
+-- | This module provides the implementation of the top-level zipper
+-- operations and exports the zipper interface functions.
+--
+-- For more datailed documentation, see the "Generics.Zipper" module.
+--
+module Generics.Zipper.GenericZipper (
+    -- * Locations
+    Loc
+    -- * Interface
+    -- ** Navigation functions
+  , goDown
+  , goRight
+  , goUp
+    -- ** Start navigating
+  , enter
+    -- ** End navigating
+  , leave
+    -- ** Updating
+  , update
+    -- * Combining operations
+  , (>>>)
+) where
 
 import GHC.Exts (Constraint)
 import Data.Maybe
 
-import Generics.SOP
-
-import Base
-import GenericContext
+import Generics.Zipper.Base
+import Generics.Zipper.GenericContext
 
 ----------------------------------------------------------------------------
 --                     Generic zipper implementation
@@ -32,7 +51,7 @@ instance (Generic b, Zipper fam c r a b, In b fam ~ 'True)
 
 type ProofIn fam c r a b = Proof (In b fam) fam c r a b
 
-type family AllProof (fam :: [k]) (u :: k -> Constraint) (r :: k)
+type family AllProof (fam :: [k]) (c :: k -> Constraint) (r :: k)
                     (a :: k) (xs :: [k]) :: Constraint where
    AllProof fam c r a '[] = ()
    AllProof fam c r a (x ': xs)
@@ -296,6 +315,9 @@ data Contexts (r :: *) (a :: *) (fam :: [*]) (c :: * -> Constraint) where
     Ctxs :: (Generic a, In a fam ~ 'True, c a, Zipper fam c r x a)
          => Context fam a -> Contexts r x fam c -> Contexts r a fam c
 
+-- | A location contains the current focus and its context.
+-- Its type fixes the type of the root, the type of the family
+-- of datatypes, and the constraint over datatypes in the family.
 data Loc (r :: *) (fam :: [*]) (c :: * -> Constraint) where
     Loc :: Family r a fam c -> Contexts r a fam c -> Loc r fam c
 
@@ -307,12 +329,15 @@ type Zipper fam c r a b
     = (GoDown fam c r b, GoRight fam c r a b, GoUp fam a b,
        ProofEq r b, c b)
 
+-- | Move down to the leftmost child if possible. For leaves,
+-- return 'Nothing'.
 goDown :: Loc a fam c -> Maybe (Loc a fam c)
 goDown (Loc (Family t) cs :: Loc a fam c)
     = case toFirst (Fam @fam) (Proxy @a) t of
         Just t' -> Just $ Loc t' (Ctxs (toCtxFirst (Fam @fam) t) cs)
         _       -> Nothing
 
+-- | Move down to the right sibling if possible, else return 'Nothing'.
 goRight :: Loc a fam c -> Maybe (Loc a fam c)
 goRight (Loc _ CNil) = Nothing
 goRight (Loc (Family t) (Ctxs c cs) :: Loc a fam c)
@@ -320,26 +345,27 @@ goRight (Loc (Family t) (Ctxs c cs) :: Loc a fam c)
         Just t' -> Just (Loc t' (Ctxs (nextCtx c t) cs))
         _       -> Nothing
 
+-- | Move down to the parent if possible. For the root, return 'Nothing'.
 goUp :: Loc a fam c -> Maybe (Loc a fam c)
 goUp (Loc _ CNil) = Nothing
 goUp (Loc (Family t) (Ctxs c (cs :: Contexts a x fam c)))
     = Just (Loc (fillCtx c (Proxy @a) (Proxy @x) t) cs)
 
--- Start navigating
+-- | Enter a tree. Places the value into the empty context.
 enter :: (Generic a, In a fam ~ 'True, Zipper fam c a a a)
       => Fam fam c -> a -> Loc a fam c
 enter (_ :: Fam fam c) (hole :: a) = Loc (Family hole) (CNil @a @fam @c)
 
--- End navigating
+-- | Move up to the root and return the expression in focus.
 leave :: Loc a fam c -> a
 leave (Loc (Family (hole :: b) :: Family a x fam c) CNil)
     = fromJust $ witnessEq (Proxy @(Equal a b)) (Proxy @a) hole
 leave loc = leave $ fromJust $ goUp loc
 
--- Update the current focus
+-- | Update the current focus, which contains a constrained value.
 update :: (forall b. c b => b -> b) -> Loc a fam c -> Loc a fam c
 update f (Loc (Family hole) cs) = Loc (Family (f hole)) cs
 
--- Flipped function composition
+-- | Flipped function composition.
 (>>>) :: (a -> b) -> (b -> c) -> a -> c
 (>>>) f g = g . f

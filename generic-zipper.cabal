@@ -26,6 +26,7 @@ library
   exposed-modules:     Generics.Zipper
                        Generics.Zipper.GenericZipper
                        Generics.GShow
+                       Generics.GFunctor
   other-modules:       Generics.Zipper.Base
                        Generics.Zipper.GenericContext
   other-extensions:    TypeOperators

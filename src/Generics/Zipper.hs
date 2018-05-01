@@ -15,9 +15,10 @@
 --  type Var  = String
 -- @
 --
--- To use the Zipper interface, you need to create 'Generics.SOP.Generic'
--- instances for these datatypes. It is possible to derive the instances
--- via the built-in GHC-generics:
+-- To use the zipper interface for these datatypes, you need to create
+-- instances of the @Generic@ class from the
+-- @<https://hackage.haskell.org/package/generics-sop generics-sop>@ library.
+-- It is possible to derive the instances via @GHC.Generics@:
 --
 -- > {-# LANGUAGE DeriveGeneric #-}
 -- >
@@ -34,16 +35,13 @@
 -- >           | Seq Decl Decl
 -- >     deriving (GHC.Generic, Show)
 -- > type Var  = String
---
--- Then, we can just say:
---
--- @
--- instance Generic Expr
--- instance Generic Decl
--- @
+-- >
+-- > instance Generic Expr
+-- > instance Generic Decl
+-- >
 --
 -- Assume we want to traverse the following example expression
--- using the Zipper.
+-- using the zipper.
 --
 -- @
 -- example :: Expr
@@ -66,46 +64,41 @@
 -- == Using the Zipper
 --
 -- A type for a family of mutually recursive datatypes is a promoted list
--- of types that you consider as mutually recursive,
--- fixed by the datatype 'Fam':
+-- of types that you consider as mutually recursive:
 --
 -- @
---   data Fam (fam :: [*]) (c :: * -> Constraint) = Fam
+--   type ExampleFam1 = '[Expr, Decl, Var]
 -- @
---
--- The parameter @c@ is needed to fix all constraints, applied to each
--- datatype in the family.
 --
 -- The flipped function composition '>>>' and flipped Kleisli (monadic)
--- composition '>=>' are helpful to combine the navigation and
--- edit operations.
+-- composition '>=>' can be used to chain moves and
+-- edit operations. In the following definition of @test1@, 'enter'
+-- starts navigation within the tree-like structure of the expression;
+-- the 'enter' function takes two type arguments: a family of datatypes
+-- and a (single or complex) constraint that is meant to be applied to each
+-- datatype in the family (such as @Update@ in our example).
 --
 -- @
--- type ExampleFam1 = '[Expr, Decl, Var]
---
--- test1 = enter (Fam \@ExampleFam1 \@Update)
+-- test1 = enter \@ExampleFam1 \@Update
 --             >>> goDown >=> goDown >=> goRight >=> update solve
 --             >>> leave >>> return $ example
 -- @
 --
--- Note that the code above requires the @TypeApplications@ extension.
--- You may substitute for:
+-- The code above uses the @TypeApplications@ extension.
 --
--- > (Fam :: Fam ExampleFam Update)
---
--- Defining another example of a traversal on this value should show that
--- using the generic Zipper is flexible for families of mutually recursive
--- datatypes.
+-- Defining another example of traversal with this value shows that
+-- usage of the generic zipper is meant to be flexible for various families
+-- of mutually recursive datatypes.
 --
 -- @
 -- type ExampleFam2 = '[Expr, Var]
 --
--- test2 = enter (Fam \@ExampleFam2 \@Update)
+-- test2 = enter \@ExampleFam2 \@Update
 --             >>> goDown >=> goDown >=> goRight >=> update solve
 --             >>> leave >>> return $ example
 -- @
 --
--- The calls of these two tests will yield the desired results:
+-- The calls of these two tests yield the following results:
 --
 -- >>> test1
 -- Just (Let ("x" := Const 42) (Add (EVar "x") (EVar "y")))
@@ -115,16 +108,14 @@
 module Generics.Zipper (
     -- * Locations
     Loc
-    -- * Families
-  , Fam(..)
     -- * Interface
-    -- ** Navigation functions
+    -- ** Movement functions
   , goDown
   , goRight
   , goUp
-    -- ** Start navigating
+    -- ** Starting navigation
   , enter
-    -- ** End navigating
+    -- ** Ending navigation
   , leave
     -- ** Updating
   , update

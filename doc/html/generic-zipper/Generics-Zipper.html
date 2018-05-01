@@ -1,0 +1,69 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>Generics.Zipper</title><link href="ocean.css" rel="stylesheet" type="text/css" title="Ocean" /><script src="haddock-util.js" type="text/javascript"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script><script type="text/javascript">//<![CDATA[
+window.onload = function () {pageLoad();};
+//]]>
+</script></head><body><div id="package-header"><ul class="links" id="page-menu"><li><a href="index.html">Contents</a></li><li><a href="doc-index.html">Index</a></li></ul><p class="caption">generic-zipper-0.1.0.0: The generic zipper for mutually recursive datatypes</p></div><div id="content"><div id="module-header"><table class="info"><tr><th>Safe Haskell</th><td>None</td></tr><tr><th>Language</th><td>Haskell2010</td></tr></table><p class="caption">Generics.Zipper</p></div><div id="table-of-contents"><p class="caption">Contents</p><ul><li><a href="#g:1">Locations</a></li><li><a href="#g:2">Interface</a><ul><li><a href="#g:3">Movement functions</a></li><li><a href="#g:4">Starting navigation</a></li><li><a href="#g:5">Ending navigation</a></li><li><a href="#g:6">Updating</a></li></ul></li><li><a href="#g:7">Combining operations</a><ul><li><a href="#g:8">Re-exports</a></li></ul></li></ul></div><div id="description"><p class="caption">Description</p><div class="doc"><p>The main module of the <code>generic-zipper</code> library.</p><h1>Example</h1><p>Let us consider the example of a family of mutually recursive datatypes.</p><pre> data Expr = Const Int
+           | Add Expr Expr
+           | Mul Expr Expr
+           | EVar Var
+           | Let Decl Expr
+ data Decl = Var := Expr
+           | Seq Decl Decl
+ type Var  = String
+</pre><p>To use the zipper interface for these datatypes, you need to create
+ instances of the <code>Generic</code> class from the
+ <code><a href="https://hackage.haskell.org/package/generics-sop">generics-sop</a></code> library.
+ It is possible to derive the instances via <code>GHC.Generics</code>:</p><pre>{-# LANGUAGE DeriveGeneric #-}
+
+import Generics.SOP
+import qualified GHC.Generics as GHC (Generic)
+
+data Expr = Const Int
+          | Add Expr Expr
+          | Mul Expr Expr
+          | EVar Var
+          | Let Decl Expr
+    deriving (GHC.Generic, Show)
+data Decl = Var := Expr
+          | Seq Decl Decl
+    deriving (GHC.Generic, Show)
+type Var  = String
+
+instance Generic Expr
+instance Generic Decl
+</pre><p>Assume we want to traverse the following example expression
+ using the zipper.</p><pre>example :: Expr
+example = Let (&quot;x&quot; := Mul (Const 6) (Const 9))
+              (Add (EVar &quot;x&quot;) (EVar &quot;y&quot;))
+</pre><p>Let us define a class that provides a function for updating the tree.</p><pre>class Update a where
+    solve :: a -&gt; a
+    solve = id
+instance Update Expr where
+    solve _ = Const 42
+instance Update Decl
+instance Update Var
+</pre><h2>Using the Zipper</h2><p>A type for a family of mutually recursive datatypes is a promoted list
+ of types that you consider as mutually recursive:</p><pre>  type ExampleFam1 = '[Expr, Decl, Var]
+</pre><p>The flipped function composition <code><a href="Generics-Zipper.html#v:-62--62--62-">&gt;&gt;&gt;</a></code> and flipped Kleisli (monadic)
+ composition <code><a href="Generics-Zipper.html#v:-62--61--62-">&gt;=&gt;</a></code> can be used to chain moves and
+ edit operations. In the following definition of <code>test1</code>, <code><a href="Generics-Zipper.html#v:enter">enter</a></code>
+ starts navigation within the tree-like structure of the expression;
+ the <code><a href="Generics-Zipper.html#v:enter">enter</a></code> function takes two type arguments: a family of datatypes
+ and a (single or complex) constraint that is meant to be applied to each
+ datatype in the family (such as <code>Update</code> in our example).</p><pre>test1 = enter @ExampleFam1 @Update
+            &gt;&gt;&gt; goDown &gt;=&gt; goDown &gt;=&gt; goRight &gt;=&gt; update solve
+            &gt;&gt;&gt; leave &gt;&gt;&gt; return $ example
+</pre><p>The code above uses the <code>TypeApplications</code> extension.</p><p>Defining another example of traversal with this value shows that
+ usage of the generic zipper is meant to be flexible for various families
+ of mutually recursive datatypes.</p><pre>type ExampleFam2 = '[Expr, Var]
+
+test2 = enter @ExampleFam2 @Update
+            &gt;&gt;&gt; goDown &gt;=&gt; goDown &gt;=&gt; goRight &gt;=&gt; update solve
+            &gt;&gt;&gt; leave &gt;&gt;&gt; return $ example
+</pre><p>The calls of these two tests yield the following results:</p><pre class="screen"><code class="prompt">&gt;&gt;&gt; </code><strong class="userinput"><code>test1
+</code></strong>Just (Let (&quot;x&quot; := Const 42) (Add (EVar &quot;x&quot;) (EVar &quot;y&quot;)))
+<code class="prompt">&gt;&gt;&gt; </code><strong class="userinput"><code>test2
+</code></strong>Just (Let (&quot;x&quot; := Mul (Const 6) (Const 9)) (Add (EVar &quot;x&quot;) (Const 42)))
+</pre></div></div><div id="synopsis"><p id="control.syn" class="caption expander" onclick="toggleSection('syn')">Synopsis</p><ul id="section.syn" class="hide" onclick="toggleSection('syn')"><li class="src short"><span class="keyword">data</span> <a href="#t:Loc">Loc</a> (r :: <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:-42-">*</a>) (fam :: [<a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:-42-">*</a>]) (c :: <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:-42-">*</a> -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:Constraint">Constraint</a>)</li><li class="src short"><a href="#v:goDown">goDown</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#t:Maybe">Maybe</a> (<a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c)</li><li class="src short"><a href="#v:goRight">goRight</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#t:Maybe">Maybe</a> (<a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c)</li><li class="src short"><a href="#v:goUp">goUp</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#t:Maybe">Maybe</a> (<a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c)</li><li class="src short"><a href="#v:enter">enter</a> :: <span class="keyword">forall</span> fam c a. (Generic a, In a fam, Zipper a fam c) =&gt; a -&gt; <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c</li><li class="src short"><a href="#v:leave">leave</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; a</li><li class="src short"><a href="#v:update">update</a> :: (<span class="keyword">forall</span> b. c b =&gt; b -&gt; b) -&gt; <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c</li><li class="src short"><a href="#v:-62--62--62-">(&gt;&gt;&gt;)</a> :: (a -&gt; b) -&gt; (b -&gt; c) -&gt; a -&gt; c</li><li class="src short"><a href="#v:-62--61--62-">(&gt;=&gt;)</a> :: <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Control-Monad.html#t:Monad">Monad</a> m =&gt; (a -&gt; m b) -&gt; (b -&gt; m c) -&gt; a -&gt; m c</li></ul></div><div id="interface"><h1 id="g:1">Locations</h1><div class="top"><p class="src"><span class="keyword">data</span> <a id="t:Loc" class="def">Loc</a> (r :: <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:-42-">*</a>) (fam :: [<a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:-42-">*</a>]) (c :: <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:-42-">*</a> -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Kind.html#t:Constraint">Constraint</a>) <a href="#t:Loc" class="selflink">#</a></p><div class="doc"><p>A location contains the current focus and its context.
+ Its type fixes the type of the root, the type of the family
+ of datatypes, and the constraint over datatypes in the family.</p></div></div><h1 id="g:2">Interface</h1><h2 id="g:3">Movement functions</h2><div class="top"><p class="src"><a id="v:goDown" class="def">goDown</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#t:Maybe">Maybe</a> (<a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c) <a href="#v:goDown" class="selflink">#</a></p><div class="doc"><p>Move down to the leftmost child if possible. For leaves,
+ return <code><a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#v:Nothing">Nothing</a></code>.</p></div></div><div class="top"><p class="src"><a id="v:goRight" class="def">goRight</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#t:Maybe">Maybe</a> (<a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c) <a href="#v:goRight" class="selflink">#</a></p><div class="doc"><p>Move down to the right sibling if possible, else return <code><a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#v:Nothing">Nothing</a></code>.</p></div></div><div class="top"><p class="src"><a id="v:goUp" class="def">goUp</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#t:Maybe">Maybe</a> (<a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c) <a href="#v:goUp" class="selflink">#</a></p><div class="doc"><p>Move down to the parent if possible. For the root, return <code><a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Data-Maybe.html#v:Nothing">Nothing</a></code>.</p></div></div><h2 id="g:4">Starting navigation</h2><div class="top"><p class="src"><a id="v:enter" class="def">enter</a> :: <span class="keyword">forall</span> fam c a. (Generic a, In a fam, Zipper a fam c) =&gt; a -&gt; <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c <a href="#v:enter" class="selflink">#</a></p><div class="doc"><p>Enter a tree. Places the value into the empty context.</p></div></div><h2 id="g:5">Ending navigation</h2><div class="top"><p class="src"><a id="v:leave" class="def">leave</a> :: <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; a <a href="#v:leave" class="selflink">#</a></p><div class="doc"><p>Move up to the root and return the expression in focus.</p></div></div><h2 id="g:6">Updating</h2><div class="top"><p class="src"><a id="v:update" class="def">update</a> :: (<span class="keyword">forall</span> b. c b =&gt; b -&gt; b) -&gt; <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c -&gt; <a href="Generics-Zipper.html#t:Loc">Loc</a> a fam c <a href="#v:update" class="selflink">#</a></p><div class="doc"><p>Update the current focus, which contains a constrained value.</p></div></div><h1 id="g:7">Combining operations</h1><div class="top"><p class="src"><a id="v:-62--62--62-" class="def">(&gt;&gt;&gt;)</a> :: (a -&gt; b) -&gt; (b -&gt; c) -&gt; a -&gt; c <a href="#v:-62--62--62-" class="selflink">#</a></p><div class="doc"><p>Flipped function composition.</p></div></div><h2 id="g:8">Re-exports</h2><div class="top"><p class="src"><a id="v:-62--61--62-" class="def">(&gt;=&gt;)</a> :: <a href="file:///usr/local/haskell/ghc-8.2.1-x86_64/share/doc/ghc-8.2.1/html/libraries/base-4.10.0.0/Control-Monad.html#t:Monad">Monad</a> m =&gt; (a -&gt; m b) -&gt; (b -&gt; m c) -&gt; a -&gt; m c <span class="fixity">infixr 1</span><span class="rightedge"></span> <a href="#v:-62--61--62-" class="selflink">#</a></p><div class="doc"><p>Left-to-right Kleisli composition of monads.</p></div></div></div></div><div id="footer"><p>Produced by <a href="http://www.haskell.org/haddock/">Haddock</a> version 2.18.1</p></div></body></html>

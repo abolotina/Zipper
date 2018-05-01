@@ -43,7 +43,7 @@ instance Update Var
 
 type ExampleFam1 = '[Expr, Decl, Var]
 
-test1 = enter (Fam @ExampleFam1 @Update)
+test1 = enter @ExampleFam1 @Update
             >>> goDown >=> goDown >=> goRight >=> update solve
             >>> leave >>> return $ example
 
@@ -52,7 +52,7 @@ test1 = enter (Fam @ExampleFam1 @Update)
 
 type ExampleFam2 = '[Expr, Var]
 
-test2 = enter (Fam @ExampleFam2 @Update)
+test2 = enter @ExampleFam2 @Update
             >>> goDown >=> goDown >=> goRight >=> update solve
             >>> leave >>> return $ example
 

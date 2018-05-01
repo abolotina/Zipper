@@ -1,5 +1,5 @@
 {-# LANGUAGE TypeFamilies, DataKinds, KindSignatures, TypeOperators,
-     UndecidableInstances, PolyKinds #-}
+     UndecidableInstances, PolyKinds, ConstraintKinds #-}
 -- | Type-level functions of this module implement the machinery of
 -- partial differentiation of types. The result of differentiation is
 -- the type of the zipper context.
@@ -37,10 +37,12 @@ data ConsNum = F         -- First
              | None
     deriving Eq
 
-type family In (a :: k) (fam :: [k]) :: Bool where
-    In a (a ': fam) = 'True
-    In a (x ': fam) = In a fam
-    In a '[]        = 'False
+type family InFam (a :: k) (fam :: [k]) :: Bool where
+    InFam a (a ': fam) = 'True
+    InFam a (x ': fam) = InFam a fam
+    InFam a '[]        = 'False
+
+type In a fam = InFam a fam ~ True
 
 type family If (c :: Bool) (t :: k) (e :: k) where
     If 'True  t e = t
@@ -56,7 +58,7 @@ data End
 
 type family DiffProd (fam :: [*]) (xs :: [*]) :: [[*]] where
     DiffProd fam '[]       = '[]
-    DiffProd fam '[x]      = If (In x fam) '[ '[Hole]] '[]
-    DiffProd fam '[End, x] = If (In x fam) '[ '[]]     '[]
+    DiffProd fam '[x]      = If (InFam x fam) '[ '[Hole]] '[]
+    DiffProd fam '[End, x] = If (InFam x fam) '[ '[]]     '[]
     DiffProd fam (x ': xs)
         = Hole .* xs .** DiffProd fam '[End, x] .++ x .* DiffProd fam xs

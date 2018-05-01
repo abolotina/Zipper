@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeOperators, TypeFamilies, DataKinds, MultiParamTypeClasses,
     UndecidableInstances, FlexibleInstances, FlexibleContexts, PolyKinds,
     ConstraintKinds, ScopedTypeVariables, Rank2Types, GADTs,
-    UndecidableSuperClasses, TypeApplications #-}
+    UndecidableSuperClasses, TypeApplications, AllowAmbiguousTypes #-}
 -- | Definitions in this module are common for implementing
 -- navigation primitives for the generic zipper.
 module Generics.Zipper.Base (
@@ -18,11 +18,10 @@ import Generics.Zipper.GenericContext
 
 -- =========================================== Base
 
--- | This datatype fixes the type for a family of mutually recursive
--- datatypes, which is a promoted list of types that you consider as
--- mutually recursive. The parameter @c@ fixes all constraints applied
--- to each datatype in the family.
-data Fam (fam :: [*]) (c :: * -> Constraint) = Fam
+type CtxCode  fam a = ToContext 'F fam (Code a)
+type GContext fam a = SOP I (CtxCode fam a)
+
+newtype Context fam a = Ctx {ctx :: SOP I (CtxCode fam a)}
 
 type family Equal a x :: Bool where
     Equal a a = 'True
@@ -35,111 +34,62 @@ type family Equals (a :: k) (xs :: [k]) :: [Bool] where
 type IsHole xs = Equals Hole xs
 
 class ProofEq' (p :: Bool) (a :: *) (b :: *) where
-    witnessEq :: Proxy p -> Proxy a -> b -> Maybe a
+    witnessEq :: b -> Maybe a
 
 instance ProofEq' 'False a b where
-    witnessEq _ _ _ = Nothing
+    witnessEq _ = Nothing
 instance ProofEq' 'True a a where
-    witnessEq _ _   = Just
+    witnessEq   = Just
 
 type ProofEq a b = ProofEq' (Equal a b) a b
 
-type family All2C (c :: k -> k -> [k] -> Constraint)
-                  (a :: k) (b :: k) (xss :: [[k]]) :: Constraint where
-    All2C c a b '[]         = ()
-    All2C c a b (xs ': xss) = (c a b xs, All2C c a b xss)
+class ProofEq' (Equal a b) (f a) (f b) => ProofF f a b
+instance ProofEq' (Equal a b) (f a) (f b) => ProofF f a b
 
-type family All2CFam (c :: [k] -> [k] -> Constraint)
-                     (fam :: [k]) (xss :: [[k]]) :: Constraint where
-    All2CFam c fam '[]         = ()
-    All2CFam c fam (xs ': xss) = (c fam xs, All2CFam c fam xss)
+type family AllNum (c :: k -> ConsNum -> Constraint)
+                 (xs :: [k]) (n :: ConsNum) :: Constraint where
+    AllNum c '[]       n = ()
+    AllNum c (x ': xs) n = (c x n, AllNum c xs ('N n))
 
-type family All2CFam2 (c :: [k] -> k -> k -> [k] -> Constraint)
-                      (fam :: [k]) (a :: k) (b :: k)
-                      (xss :: [[k]]) :: Constraint where
-    All2CFam2 c fam a b '[] = ()
-    All2CFam2 c fam a b (xs ': xss)
-        = (c fam a b xs, All2CFam2 c fam a b xss)
-
-type family All2CFam2C (c :: [k] -> (k -> Constraint) -> k -> k
-                          -> [k] -> Constraint)
-                       (fam :: [k]) (u :: k -> Constraint) (a :: k) (b :: k)
-                       (xss :: [[k]]) :: Constraint where
-    All2CFam2C c fam u a b '[] = ()
-    All2CFam2C c fam u a b (xs ': xss)
-        = (c fam u a b xs, All2CFam2C c fam u a b xss)
-
-type CtxCode  fam a = ToContext 'F fam (Code a)
-type GContext fam a = SOP I (CtxCode fam a)
-
-newtype Context fam a = Ctx {ctx :: GContext fam a}
-
-type family AllProofF (f :: k -> *)
-                      (x :: k) (ys :: [k]) :: Constraint where
-    AllProofF f x '[]       = ()
-    AllProofF f x (y ': ys)
-        = (ProofEq' (Equal x y) (f x) (f y), AllProofF f x ys)
-
-class ConsNumInj (n :: ConsNum) (xs :: [k]) where
-    consNumInj :: AllProofF f xs yss
-               => Proxy n -> Proxy xs -> NP f yss -> f xs
+class ConsNumInj (n :: ConsNum) (xs :: [*]) where
+    consNumInj :: All (ProofF f xs) yss => NP f yss -> f xs
 
 instance ConsNumInj n xs => ConsNumInj ('N n) xs where
-    consNumInj _ p (_ :* yss) = consNumInj (Proxy @n) p yss
-    consNumInj _ _ Nil        = impossible
+    consNumInj (_ :* yss) = consNumInj @n yss
+    consNumInj Nil        = impossible
 instance ConsNumInj 'F xs where
-    consNumInj _ _ ((ys :: f ys) :* _)
-        = fromMaybe impossible
-                    (witnessEq (Proxy @(Equal xs ys))
-                               (Proxy @(f xs)) ys)
-    consNumInj _ _ Nil = impossible
+    consNumInj ((ys :: f ys) :* _)
+        = fromMaybe impossible $ witnessEq @(Equal xs ys) ys
+    consNumInj Nil = impossible
 instance ConsNumInj 'None xs where
-    consNumInj _ _ _   = impossible
+    consNumInj _   = impossible
 
 type family FstRecToHole (fam :: [k]) (xs :: [k]) :: [k] where
     FstRecToHole fam '[]       = '[]
-    FstRecToHole fam (a ': xs) = If (In a fam)
+    FstRecToHole fam (a ': xs) = If (InFam a fam)
                                      (Hole ': xs)
                                      (a    ': FstRecToHole fam xs)
 
-class FromFstRec (xs :: [*]) (ys :: [*]) where
-    fromFstRec :: Proxy ys -> NP I xs -> NP I ys
+class FromFstRec (ys :: [*]) (xs :: [*]) where
+    fromFstRec :: NP I xs -> NP I ys
 
-instance FromFstRec (x ': xs) (Hole ': xs) where
-    fromFstRec _ (_ :* xs) = I Hole :* xs
-instance FromFstRec xs ys => FromFstRec (x ': xs) (x ': ys) where
-    fromFstRec _ (x :* xs) = x      :* fromFstRec (Proxy @ys) xs
+instance FromFstRec (Hole ': xs) (x ': xs) where
+    fromFstRec (_ :* xs) = I Hole :* xs
+instance FromFstRec ys xs => FromFstRec (x ': ys) (x ': xs) where
+    fromFstRec (x :* xs) = x      :* fromFstRec xs
 instance FromFstRec '[] '[] where
-    fromFstRec _ _         = Nil
-
-type family All2CN (c :: ConsNum -> [k] -> [k] -> k -> Constraint)
-                   (xss :: [[k]]) (fam :: [k]) (a :: k)
-                   (n :: ConsNum) :: Constraint where
-    All2CN c '[]         fam a n = ()
-    All2CN c (xs ': xss) fam a n
-        = (c n xs fam a, All2CN c xss fam a ('N n))
-
-type family All2CFN2 (c :: ConsNum -> ([k] -> *) -> [k] -> [k] -> [[k]]
-                        -> Constraint)
-                     (f :: [k] -> *) (fam :: [k])
-                     (xss :: [[k]]) (yss :: [[k]])
-                     (n :: ConsNum) :: Constraint where
-    All2CFN2 c f fam '[]         yss n = ()
-    All2CFN2 c f fam (xs ': xss) yss n
-        = (c n f fam xs yss, All2CFN2 c f fam xss yss ('N n))
+    fromFstRec _         = Nil
 
 type AppInj n xs code = (ConsNumInj n xs, SListI code,
-                         AllProofF (Injection (NP I) code) xs code)
+                         All (ProofF (Injection (NP I) code) xs) code)
 
-appCtxInj :: AppInj n xs (CtxCode fam a)
-          => Fam fam c -> Proxy a -> Proxy (n :: ConsNum) -> NP I xs
-          -> Context fam a
-appCtxInj _ _ p np
-    = Ctx $ SOP $ unK $ apFn (consNumInj p Proxy injections) np
+appCtxInj :: forall n a xs fam . AppInj n xs (CtxCode fam a)
+          => NP I xs -> Context fam a
+appCtxInj np = Ctx $ SOP $ unK $ apFn (consNumInj @n injections) np
 
-appInj :: AppInj n xs (Code a)
-       => Proxy a -> Proxy (n :: ConsNum) -> NP I xs -> Rep a
-appInj _ p np = SOP $ unK $ apFn (consNumInj p Proxy injections) np
+appInj :: forall a n xs . (AppInj n xs (Code a))
+       => NP I xs -> Rep a
+appInj np = SOP $ unK $ apFn (consNumInj @n injections) np
 
 -- Internal error function
 impossible :: a

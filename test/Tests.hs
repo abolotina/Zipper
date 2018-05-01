@@ -7,12 +7,12 @@ module Main where
 
 import GHC.Exts (Constraint)
 import Data.Maybe
+import Control.Monad ((>=>))
 
 import qualified DiffTests
 import TreeExample
-import Generics.Zipper
+import Generics.Zipper.GenericZipper
 import Generics.Zipper.Base
-import Generics.GShow
 
 -- An example value of Tree
 tree :: TreeIB
@@ -140,30 +140,30 @@ instance UpdateTree TreeIB where
 type TreeFam = '[TreeIB]
 
 test1 :: Maybe TreeIB
-test1 =  enter (Fam @TreeFam @UpdateTree)
+test1 =  enter @TreeFam @UpdateTree
              >>> goDown >=> update (change $ Leaf 42)
              >>> leave >>> return $ tree
 
 test2 :: Maybe TreeIB
-test2 =  enter (Fam @TreeFam @UpdateTree)
+test2 =  enter @TreeFam @UpdateTree
              >>> goDown >=> goRight >=> goDown >=> goRight
              >=> update (change $ Leaf 666)
              >>> leave >>> return $ tree
 
 test3 :: Maybe TreeIB
-test3 =  enter (Fam @TreeFam @UpdateTree)
+test3 =  enter @TreeFam @UpdateTree
              >>> goDown >=> update (change $ Leaf 13)
              >>> leave >>> return $ tree2
 
 test4 :: Maybe TreeIB
-test4 =  enter (Fam @TreeFam @UpdateTree)
+test4 =  enter @TreeFam @UpdateTree
              >>> goDown >=> goRight >=> goRight
              >=> goDown >=> goRight >=> goUp
              >=> update (change $ Leaf 18)
              >>> leave >>> return $ tree
 
 test5 :: Maybe TreeIB
-test5 =  enter (Fam @TreeFam @UpdateTree)
+test5 =  enter @TreeFam @UpdateTree
              >>> goDown >=> goRight >=> goRight
              >=> goDown >=> goDown
              >=> leave >>> return $ tree
@@ -181,25 +181,25 @@ instance UpdateInt MutTreeIB2 where
 type MutTreeFam = '[MutTreeIB1, MutTreeIB2]
 
 mutTest1 :: Maybe MutTreeIB1
-mutTest1 =  enter (Fam @MutTreeFam @UpdateInt)
+mutTest1 =  enter @MutTreeFam @UpdateInt
              >>> goDown >=> update (changeInt 42)
              >>> leave >>> return $ mutTree
 
 mutTest2 :: Maybe MutTreeIB1
-mutTest2 =  enter (Fam @MutTreeFam @UpdateInt)
+mutTest2 =  enter @MutTreeFam @UpdateInt
              >>> goDown >=> goRight >=> goDown >=> goRight
              >=> update (changeInt 666)
              >>> leave >>> return $ mutTree
 
 mutTest3 :: Maybe MutTreeIB1
-mutTest3 =  enter (Fam @MutTreeFam @UpdateInt)
+mutTest3 =  enter @MutTreeFam @UpdateInt
              >>> goDown >=> goRight >=> goRight
              >=> goDown >=> goRight >=> goUp
              >=> update (changeInt 18)
              >>> leave >>> return $ mutTree
 
 mutTest4 :: Maybe MutTreeIB1
-mutTest4 =  enter (Fam @MutTreeFam @UpdateInt)
+mutTest4 =  enter @MutTreeFam @UpdateInt
              >>> goDown >=> goRight >=> goRight
              >=> goDown >=> goDown
              >=> leave >>> return $ mutTree
@@ -208,7 +208,6 @@ mutTest4 =  enter (Fam @MutTreeFam @UpdateInt)
 -- Print the results of tests
 runTests :: IO ()
 runTests = do
-    putStrLn $ gShow tree
     print $ from tree
     print $ fromJust test1
     print $ fromJust test2

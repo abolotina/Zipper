@@ -24,10 +24,8 @@ source-repository head
 
 library
   exposed-modules:     Generics.Zipper
-                       Generics.Zipper.GenericZipper
-                       Generics.GShow
-                       Generics.GFunctor
-  other-modules:       Generics.Zipper.Base
+  other-modules:       Generics.Zipper.GenericZipper
+                       Generics.Zipper.Base
                        Generics.Zipper.GenericContext
   other-extensions:    TypeOperators
                        TypeFamilies
@@ -44,7 +42,7 @@ library
                        UndecidableSuperClasses
                        TypeApplications
                        KindSignatures
-  build-depends:       base >=4.10 && <4.11,
+  build-depends:       base >=4.8 && <4.11,
                        generics-sop >=0.3 && <0.4
   hs-source-dirs:      src
   default-language:    Haskell2010
@@ -54,19 +52,21 @@ test-suite generic-zipper-tests
   main-is:             Tests.hs
   other-modules:       TreeExample
                        DiffTests
+                       Generics.Zipper.GenericZipper
                        Generics.Zipper.Base
                        Generics.Zipper.GenericContext
   hs-source-dirs:      test, src
   default-language:    Haskell2010
-  build-depends:       base >=4.10 && <4.11,
-                       generics-sop >=0.3 && <0.4,
-                       generic-zipper
+  build-depends:       base >=4.8 && <4.11,
+                       generics-sop >=0.3 && <0.4
+  default-language:    Haskell2010
 
 test-suite generic-zipper-example
   type:                exitcode-stdio-1.0
   main-is:             Example.hs
   hs-source-dirs:      test
   default-language:    Haskell2010
-  build-depends:       base >=4.10 && <4.11,
+  build-depends:       base >=4.8 && <4.11,
                        generics-sop >=0.3 && <0.4,
                        generic-zipper
+  default-language:    Haskell2010

@@ -72,7 +72,7 @@ instance Update Decl
 instance Update Var
 ```
 
-## Using the Zipper
+### Using the Zipper
 
 A type for a family of mutually recursive datatypes is a promoted list
 of types that you consider as mutually recursive:
